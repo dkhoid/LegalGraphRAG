@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LegalGraphRAG - Hệ thống Phân tích Pháp lý Việt Nam</title>
+    <!-- Google Fonts: Lato for body, EB Garamond for headings -->
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i data-lucide="scale"></i>
+                <h1>LegalGraphRAG</h1>
+            </div>
+            <p>Trợ lý phân tích vụ án và pháp lý Việt Nam dựa trên AI & Graph Database</p>
+        </header>
+
+        <main>
+            <!-- Panel Trái: Nhập liệu -->
+            <section class="input-panel solid-panel">
+                <h2><i data-lucide="file-pen"></i> Tình tiết vụ án</h2>
+                <p class="subtitle">Nhập chi tiết câu chuyện, mâu thuẫn hoặc vụ việc cần phân tích.</p>
+                <textarea id="factInput" placeholder="Ví dụ: Ông A vay ông B 100 triệu từ năm 2022, có viết giấy tay hẹn 1 năm trả. Nhưng đến nay không chịu trả, ông B đòi thì bị đánh nhập viện..."></textarea>
+
+                <div class="settings">
+                    <label for="topK">Số lượng tham khảo (Top K):</label>
+                    <input type="number" id="topK" value="5" min="1" max="10">
+                </div>
+
+                <button id="analyzeBtn" class="primary-btn">
+                    <span>Phân tích vụ án</span>
+                    <i data-lucide="sparkles"></i>
+                </button>
+            </section>
+
+            <!-- Panel Phải: Kết quả -->
+            <section class="result-panel">
+                <!-- Loading State -->
+                <div id="loadingState" class="solid-panel hidden">
+                    <div class="spinner"></div>
+                    <p>AI đang truy vấn GraphDB và phân tích pháp lý...</p>
+                </div>
+
+                <!-- Empty State -->
+                <div id="emptyState" class="solid-panel empty-state">
+                    <i data-lucide="message-square-dashed"></i>
+                    <p>Kết quả phán xử sẽ xuất hiện ở đây sau khi bạn bấm Phân tích.</p>
+                </div>
+
+                <!-- Analysis Result -->
+                <div id="analysisResult" class="hidden">
+                    <div class="result-card solid-panel dispute-type">
+                        <div class="card-header">
+                            <i data-lucide="gavel"></i>
+                            <h3>Loại Tranh Chấp</h3>
+                        </div>
+                        <div id="resDisputeType" class="card-content"></div>
+                    </div>
+
+                    <div class="result-card solid-panel laws-applied">
+                        <div class="card-header">
+                            <i data-lucide="book-open"></i>
+                            <h3>Luật Áp Dụng</h3>
+                        </div>
+                        <div id="resLaws" class="card-content tags-container"></div>
+                    </div>
+
+                    <div class="result-card solid-panel resolution">
+                        <div class="card-header">
+                            <i data-lucide="lightbulb"></i>
+                            <h3>Hướng Giải Quyết & Trách Nhiệm</h3>
+                        </div>
+                        <div id="resResolution" class="card-content"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Dữ liệu tham khảo (References) -->
+        <section id="referencesSection" class="references-section hidden">
+            <h2 class="section-title"><i data-lucide="network"></i> Dữ liệu GraphDB truy xuất được</h2>
+            <div class="ref-container">
+                <div class="ref-card solid-panel">
+                    <h3>Các Điều Luật Tương Tự</h3>
+                    <ul id="retrievedLawsList" class="ref-list"></ul>
+                </div>
+                <div class="ref-card solid-panel">
+                    <h3>Các Vụ Án Tiền Lệ (Án Lệ)</h3>
+                    <ul id="retrievedFactsList" class="ref-list"></ul>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Khởi tạo Lucide Icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
