@@ -3,7 +3,7 @@ import sys
 import os
 
 
-def setup_logger(name="LegalGraphRAG", log_file="app.log", level=logging.INFO):
+def setup_logger(name="LegalGraphRAG", log_file="logs/app.log", level=logging.INFO):
     """
     Sets up a configured logger that outputs to both console and a file.
     """

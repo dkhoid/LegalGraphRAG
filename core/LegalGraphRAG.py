@@ -55,10 +55,10 @@ class ModelConfig:
 class DataConfig:
     """Data path configuration"""
 
-    case_db_path: str = "./datas/cases_with_feature.json"
-    law_to_dispute_path: str = "./datas/law_to_dispute.json"
+    case_db_path: str = "./data/processed/cases_with_feature.json"
+    law_to_dispute_path: str = "./data/processed/law_to_dispute.json"
     datasets_path: Optional[str] = None  # Dataset root directory
-    output_dir: str = "./outputs"
+    output_dir: str = "./data/outputs"
 
     def __post_init__(self):
         """Create output directory"""
@@ -134,10 +134,12 @@ class LegalGraphRAGConfig:
 
         # Data configuration
         data_config = DataConfig(
-            case_db_path=os.getenv("case_db_path", "./datas/cases_with_feature.json"),
-            law_to_dispute_path=os.getenv("law_to_dispute_path", "./datas/law_to_dispute.json"),
+            case_db_path=os.getenv("case_db_path", "./data/processed/cases_with_feature.json"),
+            law_to_dispute_path=os.getenv(
+                "law_to_dispute_path", "./data/processed/law_to_dispute.json"
+            ),
             datasets_path=os.getenv("datasets_path"),
-            output_dir=os.getenv("output_dir", "./outputs"),
+            output_dir=os.getenv("output_dir", "./data/outputs"),
         )
 
         # Retrieval configuration
