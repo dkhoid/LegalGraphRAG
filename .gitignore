@@ -46,6 +46,7 @@ venv/
 ENV/
 env/
 .venv
+.conda/
 
 # IDEs
 .vscode/
@@ -57,9 +58,16 @@ env/
 
 # Project specific
 .env
+.env.*
+!.env.example
 *.pkl
 *.pickle
 outputs/
+
+# Data and Logs
+data/
+logs/
+*.log
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -72,6 +80,6 @@ outputs/
 .dmypy.json
 dmypy.json
 
-
-# Logs
-*.log
+# Agents / AI generated (if any)
+.agent/
+.gemini/

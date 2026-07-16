@@ -1,5 +1,4 @@
-import json
-from datasets import load_dataset_builder, load_dataset
+from datasets import load_dataset
 
 try:
     print("Loading dataset info for GreenNode/zalo-ai-legal-text-retrieval-vn (corpus)")

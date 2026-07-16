@@ -1,7 +1,6 @@
 from core.utils.logger import logger
 import json
 import os
-import pickle
 
 
 def load_json(filepath):
@@ -35,7 +34,7 @@ def main():
     missing_facts = 0
     missing_laws = 0
     if cases:
-        logger.info(f"\n[1] cases_with_feature.json")
+        logger.info("\n[1] cases_with_feature.json")
         logger.info(f"Total cases: {len(cases)}")
         for c in cases:
             if not c.get("fact"):
@@ -54,7 +53,7 @@ def main():
     civil_law_ids = set()
     laws_missing_dispute = 0
     if law_to_dispute:
-        logger.info(f"\n[2] law_to_dispute.json")
+        logger.info("\n[2] law_to_dispute.json")
         logger.info(f"Total civil laws: {len(law_to_dispute)}")
         for l in law_to_dispute:
             civil_law_ids.add(str(l.get("id")))
@@ -72,7 +71,7 @@ def main():
     criminal_law = load_json("data/processed/criminal_law_processed.json")
     criminal_law_ids = set()
     if criminal_law:
-        logger.info(f"\n[3] criminal_law_processed.json")
+        logger.info("\n[3] criminal_law_processed.json")
         logger.info(f"Total criminal laws: {len(criminal_law)}")
         for l in criminal_law:
             criminal_law_ids.add(str(l.get("id")))
@@ -80,11 +79,11 @@ def main():
     # 4. Check Law Corpus JSONL
     law_corpus = load_jsonl("data/raw/law_corpus.jsonl")
     if law_corpus:
-        logger.info(f"\n[4] law_corpus.jsonl")
+        logger.info("\n[4] law_corpus.jsonl")
         logger.info(f"Total lines in corpus: {len(law_corpus)}")
 
     # 5. Referential Integrity Check
-    logger.info(f"\n[5] Referential Integrity (Cases -> Laws)")
+    logger.info("\n[5] Referential Integrity (Cases -> Laws)")
     if cases and (civil_law_ids or criminal_law_ids):
         all_known_laws = civil_law_ids.union(criminal_law_ids)
         unknown_laws = case_laws - all_known_laws

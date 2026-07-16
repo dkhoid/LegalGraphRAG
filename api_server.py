@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -174,7 +174,7 @@ async def analyze_civil(request: CaseRequest):
                 cleaned_response = cleaned_response[:-3]
 
             analysis_result = json.loads(cleaned_response.strip())
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             # Fallback if LLM failed to return valid JSON
             analysis_result = {
                 "dispute_type": "Error parsing LLM output",

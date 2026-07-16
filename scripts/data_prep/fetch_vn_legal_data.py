@@ -478,7 +478,7 @@ def main():
     logger.info(f"Saved raw law_to_dispute.json to {raw_ltd_path}")
 
     logger.info(f"\n{'='*60}")
-    logger.info(f"SUMMARY:")
+    logger.info("SUMMARY:")
     logger.info(f"  Documents processed: {len(matched_docs)}")
     logger.info(f"  Articles extracted: {len(all_articles)}")
     logger.info(f"  Law entries created: {len(law_to_dispute_entries)}")

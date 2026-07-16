@@ -7,7 +7,7 @@ import multiprocessing
 import time
 from typing import List, Dict, Any, Optional
 
-from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig, ModelConfig, DataConfig
+from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
 
 
 def load_test_cases(datasets: str, datasets_path: str = "./datas") -> List[Dict[str, Any]]:
@@ -67,7 +67,7 @@ def process_cases_worker(
         if hasattr(rag, "model") and hasattr(rag.model, "release_model"):
             try:
                 rag.model.release_model()
-            except:
+            except Exception:
                 pass
 
 
@@ -111,7 +111,7 @@ def run_evaluation(
         if hasattr(rag_builder, "model") and hasattr(rag_builder.model, "release_model"):
             try:
                 rag_builder.model.release_model()
-            except:
+            except Exception:
                 pass
 
         logger.info("=" * 60)

@@ -6,13 +6,11 @@ from core.graph_construct.feature_graph import (
     query_similar_laws,
     query_similar_laws_naive,
     query_similar_nodes_naive,
-    update_insights_in_graph,
 )
 
 from core.judge.judge_law import judge_law
-from core.judge.judge_civil import judge_civil, judge_civil_all
+from core.judge.judge_civil import judge_civil_all
 
-import json
 from core.prompt import get_prompt
 
 

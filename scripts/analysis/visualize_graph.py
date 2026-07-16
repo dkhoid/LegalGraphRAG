@@ -2,7 +2,6 @@ from core.utils.logger import logger
 import os
 import sys
 import pickle
-import networkx as nx
 
 try:
     from pyvis.network import Network

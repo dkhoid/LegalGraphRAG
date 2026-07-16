@@ -13,6 +13,6 @@ def pre_judge(model, case) -> list:
             return candidates[:3]
         else:
             return []
-    except Exception as e:
+    except Exception:
         # Return empty list if parsing fails
         return []

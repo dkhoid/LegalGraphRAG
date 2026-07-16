@@ -5,7 +5,6 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
-from pathlib import Path
 from tqdm import tqdm
 
 from core.models import BaseModel

@@ -1,7 +1,6 @@
 """Base model interface definition"""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class BaseModel(ABC):

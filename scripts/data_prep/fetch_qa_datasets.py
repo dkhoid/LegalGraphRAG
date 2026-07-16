@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-import uuid
 from datasets import load_dataset
 from tqdm import tqdm
 

@@ -3,6 +3,7 @@ import requests
 import re
 from .graph_db import GraphDBManager
 from tqdm import tqdm
+from core.utils.logger import logger
 
 
 def get_embedding(text):
@@ -144,7 +145,10 @@ def store_nodes(nodes_data):
         db.add_node(
             node["id"],
             "Disputes",
-            {"description": node.get("description"), "embedding": node.get("embedding")},
+            {
+                "description": node.get("description"),
+                "embedding": node.get("embedding"),
+            },
         )
 
 
@@ -219,7 +223,12 @@ def build_relationships():
                     if node_info["type"] == "Disputes":
                         desc = node_info["data"].get("description", "")
                         if dispute_desc in desc or desc in dispute_desc:
-                            db.add_edge(law_id, node_id, "RELATED_DISPUTE", {"match_type": "fuzzy"})
+                            db.add_edge(
+                                law_id,
+                                node_id,
+                                "RELATED_DISPUTE",
+                                {"match_type": "fuzzy"},
+                            )
                             break
 
     # Remove Law nodes with entry <= 101 (general law provisions not relevant to cases)
@@ -266,20 +275,41 @@ def run_knn(top_k=3):
     if len(case_embeddings) < 2:
         return
 
+    # Normalize embeddings for fast cosine similarity via dot product
     case_embeddings = np.array(case_embeddings)
+    norms = np.linalg.norm(case_embeddings, axis=1, keepdims=True)
+    norms[norms == 0] = 1e-10  # Avoid division by zero
+    normalized_embeddings = case_embeddings / norms
 
-    # Compute similarity matrix and create SIMILAR_TO relationships
-    for i in tqdm(range(len(case_ids)), desc="Running KNN"):
-        similarities = []
-        for j in range(len(case_ids)):
-            if i != j:
-                sim = db.cosine_similarity(case_embeddings[i], case_embeddings[j])
-                similarities.append((j, sim))
+    num_cases = len(case_ids)
+    batch_size = 1000  # Adjust if memory is still an issue
 
-        # Select top_k most similar nodes
-        similarities.sort(key=lambda x: x[1], reverse=True)
-        for j, score in similarities[:top_k]:
-            db.add_edge(case_ids[i], case_ids[j], "SIMILAR_TO", {"score": score})
+    for start_idx in tqdm(range(0, num_cases, batch_size), desc="Running Vectorized KNN"):
+        end_idx = min(start_idx + batch_size, num_cases)
+        batch_embeddings = normalized_embeddings[start_idx:end_idx]
+
+        # Dot product yields cosine similarity because vectors are normalized
+        # Result shape: (batch_size, num_cases)
+        sim_matrix = np.dot(batch_embeddings, normalized_embeddings.T)
+
+        for i, row_idx in enumerate(range(start_idx, end_idx)):
+            # Ignore self-similarity by setting it to -1
+            sim_matrix[i, row_idx] = -1.0
+
+            row_sims = sim_matrix[i]
+            # Use argpartition to get top_k indices quickly
+            if num_cases > top_k:
+                top_indices = np.argpartition(row_sims, -top_k)[-top_k:]
+                # Sort the top_k indices by similarity descending
+                top_indices = top_indices[np.argsort(-row_sims[top_indices])]
+            else:
+                top_indices = np.argsort(-row_sims)
+
+            for j in top_indices:
+                if row_sims[j] < -0.99:  # Avoid self-similarity if num_cases <= top_k
+                    continue
+                score = float(row_sims[j])
+                db.add_edge(case_ids[row_idx], case_ids[j], "SIMILAR_TO", {"score": score})
 
 
 def create_clusters(model):
@@ -416,7 +446,11 @@ def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
     clusters = []
     for ids, record in enumerate(cluster_results):
         clusters.append(
-            {"code": ids, "cluster_id": record["id"], "summary": record.get("summary", "")}
+            {
+                "code": ids,
+                "cluster_id": record["id"],
+                "summary": record.get("summary", ""),
+            }
         )
 
     cluster_ids = rerank_clusters(model, clusters, query_text)
@@ -574,13 +608,19 @@ def query_similar_nodes(model, query_text, retrieve_config):
     # Call the two retrieval strategies
     if retrieve_config["top_retrieve"]:
         top_result_clusters, top_result_cases, top_result_laws = search_similar_nodes_top(
-            model, query_embedding, query_text, top_k=retrieve_config["top_retrieve_top_k"]
+            model,
+            query_embedding,
+            query_text,
+            top_k=retrieve_config["top_retrieve_top_k"],
         )
     else:
         top_result_clusters, top_result_cases, top_result_laws = [], [], []
     if retrieve_config["direct_retrieve"]:
         direct_result_cases, direct_result_laws = search_similar_nodes_direct(
-            model, query_embedding, query_text, top_k=retrieve_config["direct_retrieve_top_k"]
+            model,
+            query_embedding,
+            query_text,
+            top_k=retrieve_config["direct_retrieve_top_k"],
         )
     else:
         direct_result_cases, direct_result_laws = [], []

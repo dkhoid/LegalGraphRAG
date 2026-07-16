@@ -1,5 +1,4 @@
-import json
-from datasets import load_dataset_builder, load_dataset
+from datasets import load_dataset
 
 datasets_to_check = ["adamwhite625/vietnam-legal-qa", "namphan1999/data-luat"]
 
@@ -17,7 +16,7 @@ for ds_name in datasets_to_check:
         print(f"\nDataset Columns for {ds_name}:")
         print(list(sample.keys()))
 
-        print(f"\nSample Data:")
+        print("\nSample Data:")
         for k, v in sample.items():
             val = str(v)
             if len(val) > 200:

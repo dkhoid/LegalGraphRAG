@@ -1,4 +1,3 @@
-import json
 from core.prompt import get_prompt
 
 

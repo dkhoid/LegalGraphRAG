@@ -1,6 +1,5 @@
 """Base class for Transformers type models"""
 
-from typing import Optional
 import torch
 import gc
 from .base import BaseModel

@@ -174,7 +174,7 @@ class InMemoryGraphDB:
         try:
             pagerank = nx.pagerank(self.graph.to_undirected())
             return pagerank
-        except:
+        except Exception:
             return {}
 
     def compute_degree_centrality(self) -> Dict[str, int]:
