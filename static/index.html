@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LegalGraphRAG AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <div class="app-container glass">
+        <header class="header">
+            <div class="logo">
+                <i class="fa-solid fa-scale-balanced"></i>
+                <h1>LegalGraphRAG <span class="badge">AI</span></h1>
+            </div>
+            <p class="subtitle">Trợ lý Pháp lý thông minh sử dụng Hybrid Search (Vector + BM25)</p>
+        </header>
+
+        <div class="chat-container" id="chat-container">
+            <div class="message ai-message glass-message">
+                <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+                <div class="content">
+                    <p>Xin chào! Tôi là trợ lý pháp lý AI được xây dựng dựa trên kiến trúc LegalGraphRAG. Hãy đặt câu hỏi về pháp luật, tôi sẽ tìm kiếm và tư vấn cho bạn.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <form id="chat-form" class="glass-input">
+                <textarea id="user-input" placeholder="Nhập câu hỏi pháp lý của bạn ở đây... (vd: Lao động nữ sinh con cần hồ sơ thai sản gì?)" rows="1" autofocus></textarea>
+                <button type="submit" id="send-btn">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>

@@ -1,5 +1,33 @@
 [
   {
+    "id": "qa_bhxh_1",
+    "fact": "Lao động nữ sinh con cần chuẩn bị những hồ sơ gì để hưởng chế độ thai sản theo quy định mới nhất?",
+    "dispute": [
+      "Bảo hiểm xã hội"
+    ],
+    "law": [
+      "Luật Bảo hiểm xã hội Điều 61"
+    ],
+    "laws": [
+      "Luật Bảo hiểm xã hội Điều 61"
+    ],
+    "domain": "bảo hiểm xã hội"
+  },
+  {
+    "id": "qa_bhxh_1",
+    "fact": "Lao động nữ sinh con cần chuẩn bị những hồ sơ gì để hưởng chế độ thai sản theo quy định mới nhất?",
+    "dispute": [
+      "Bảo hiểm xã hội"
+    ],
+    "law": [
+      "Khoản 1 Điều 61 Luật Bảo hiểm xã hội"
+    ],
+    "laws": [
+      "Khoản 1 Điều 61 Luật Bảo hiểm xã hội"
+    ],
+    "domain": "bảo hiểm xã hội"
+  },
+  {
     "id": 0,
     "name": [
       "Nguyễn Văn Minh"

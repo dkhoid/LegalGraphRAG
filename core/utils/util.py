@@ -148,11 +148,21 @@ def locate_law(law, laws):
 
 
 def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
+    from core.retriever.graph_retriever import GraphRetriever
+    from core.retriever.vector_retriever import VectorRetriever
+
+    # Select retriever method
+    method = retrieve_config.get("method", "graph")
+    if method == "vector":
+        retriever = VectorRetriever(chatbot)
+    else:
+        retriever = GraphRetriever(chatbot)
+
     case_by_defendant = segment_case_text_withname(chatbot, case["fact"][:1024], case["name"])
     for item in case_by_defendant:
         item["feature"] = get_features(chatbot, item)
-        original_retrieved_res, retrieved_laws, retrieved_facts = retrieve(
-            chatbot, item, law_to_dispute, cases_db, retrieve_config
+        original_retrieved_res, retrieved_laws, retrieved_facts = retriever.retrieve(
+            item, law_to_dispute, cases_db, retrieve_config
         )
         if not (retrieved_laws and retrieved_facts):
             continue

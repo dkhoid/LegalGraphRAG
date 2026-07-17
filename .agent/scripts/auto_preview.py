@@ -58,7 +58,7 @@ def is_running(pid):
 def get_project_type(root):
     if (root / "package.json").exists():
         return "node"
-    elif (root / "pyproject.toml").exists():
+    elif (root / "pyproject.toml").exists() or (root / "requirements.txt").exists():
         return "python"
     return None
 
@@ -123,25 +123,26 @@ def start_server(port=3000):
         print(f"   URL: http://localhost:{port}")
 
     elif project_type == "python":
-        env["PYTHONPATH"] = str(root / "src")
+        env["PYTHONPATH"] = str(root)
 
-        print("🚀 Starting DocChat API backend (port 8000)...")
-        api_cmd = [sys.executable, "-m", "docchat.interfaces.server"]
+        print(f"🚀 Starting FastAPI app (port {port})...")
+        api_cmd = [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "app:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            str(port),
+        ]
         with open(API_LOG_FILE, "w", encoding="utf-8") as log:
             api_process = subprocess.Popen(api_cmd, cwd=str(root), stdout=log, stderr=log, env=env)
         pids.append(api_process.pid)
 
-        print(f"🚀 Starting static web server on port {port}...")
-        web_cmd = [sys.executable, "-m", "http.server", str(port), "--directory", "web"]
-        with open(WEB_LOG_FILE, "w", encoding="utf-8") as log:
-            web_process = subprocess.Popen(web_cmd, cwd=str(root), stdout=log, stderr=log, env=env)
-        pids.append(web_process.pid)
-
         print(f"✅ Preview started!")
-        print(f"   API URL:  http://localhost:8000")
-        print(f"   Web URL:  http://localhost:{port}")
-        print(f"   API Logs: {API_LOG_FILE}")
-        print(f"   Web Logs: {WEB_LOG_FILE}")
+        print(f"   URL:  http://localhost:{port}")
+        print(f"   Logs: {API_LOG_FILE}")
 
     PID_FILE.write_text(" ".join(map(str, pids)))
 
@@ -200,10 +201,8 @@ def status_server():
         root = get_project_root()
         project_type = get_project_type(root)
         if project_type == "python":
-            print("🌐 Web URL: http://localhost:3000 (Likely)")
-            print("🌐 API URL: http://localhost:8000 (Likely)")
-            print(f"📝 Web Logs: {WEB_LOG_FILE}")
-            print(f"📝 API Logs: {API_LOG_FILE}")
+            print("🌐 URL: http://localhost:3000 (Likely)")
+            print(f"📝 Logs: {API_LOG_FILE}")
         else:
             print("🌐 URL: http://localhost:3000 (Likely)")
             print(f"📝 Logs: {LOG_FILE}")

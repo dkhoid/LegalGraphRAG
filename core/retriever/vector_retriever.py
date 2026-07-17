@@ -1,0 +1,125 @@
+from typing import Dict, Any, Tuple, List
+from core.retriever.base_retriever import BaseRetriever
+from core.graph_construct.feature_graph import query_similar_nodes_naive, query_similar_laws_naive
+from rank_bm25 import BM25Okapi
+
+
+def concat_feature_descriptions(description: Dict[str, Any]) -> str:
+    res = ""
+    res += "Parties Info: " + ", ".join(description.get("parties_info", [])) + ". "
+    res += "Dispute Acts: " + ", ".join(description.get("dispute_acts", [])) + ". "
+    res += "Subject Matter: " + ", ".join(description.get("subject_matter", [])) + ". "
+    res += "Fault and Evidence: " + ", ".join(description.get("fault_and_evidence", [])) + ". "
+    return res
+
+
+class VectorRetriever(BaseRetriever):
+    """
+    Retriever that uses Hybrid Search (BM25 + Vector Cosine Similarity).
+    """
+
+    def retrieve(
+        self,
+        case: Dict[str, Any],
+        law_to_dispute: List[Dict[str, Any]],
+        cases_db: List[Dict[str, Any]],
+        retrieve_config: Dict[str, Any] = None,
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
+
+        features = case.get("feature", {})
+        query_text = concat_feature_descriptions(features)
+
+        # Determine top_k from config or use default 5
+        top_k = 5
+        if retrieve_config and "direct_retrieve_top_k" in retrieve_config:
+            top_k = retrieve_config["direct_retrieve_top_k"]
+
+        # 1. Retrieve similar cases (Vector Search)
+        retrieved_facts = query_similar_nodes_naive(self.model, query_text, top_k=top_k)
+
+        # 2. Retrieve similar laws (Hybrid Search: BM25 + Vector Search)
+        # 2a. Vector Search
+        retrieved_laws_raw = query_similar_laws_naive(query_text, top_k=top_k * 2)
+
+        # 2b. BM25 Search
+        corpus = []
+        law_mapping = []
+        for law in law_to_dispute:
+            for item in law.get("items", [law]):
+                text = item.get("text", "")
+                if text:
+                    corpus.append(text)
+                    law_mapping.append(
+                        {
+                            "id": law["id"],
+                            "entry": str(law["id"]),
+                            "text": text,
+                            "description": text,
+                            "dispute": item.get("dispute", []),
+                            "judge_dep": item.get("judge_dep", []),
+                            "related_laws": item.get("related_laws", []),
+                        }
+                    )
+
+        tokenized_corpus = [doc.lower().split(" ") for doc in corpus]
+        bm25 = BM25Okapi(tokenized_corpus)
+        tokenized_query = query_text.lower().split(" ")
+        bm25_scores = bm25.get_scores(tokenized_query)
+
+        # Get top K from BM25
+        top_n = top_k * 2
+        top_bm25_indices = sorted(
+            range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
+        )[:top_n]
+
+        bm25_results = [law_mapping[i] for i in top_bm25_indices if bm25_scores[i] > 0]
+
+        retrieved_law_entries = [str(law["entry"]) for law in retrieved_laws_raw]
+        retrieved_law_entries.extend([str(law["entry"]) for law in bm25_results])
+
+        # Also collect laws attached to the retrieved cases
+        for item in retrieved_facts:
+            for db_case in cases_db:
+                if db_case["id"] == item["caseId"]:
+                    item["dispute"] = db_case.get("dispute", [])
+                    item["law"] = db_case.get("law", [])
+                    retrieved_law_entries.extend(db_case.get("law", []))
+                    break
+
+        retrieved_law_entries = list(set(retrieved_law_entries))
+        final_retrieved_laws = []
+
+        # Reconstruct full law node data
+        for entry_id in retrieved_law_entries:
+            try:
+                if int(entry_id) < 102:  # Filtering out generic laws if needed
+                    pass
+            except ValueError:
+                pass
+
+            try:
+                for item in law_to_dispute:
+                    if str(item["id"]) == str(entry_id):
+                        for entry in item.get("items", [item]):
+                            final_retrieved_laws.append(
+                                {
+                                    "id": item["id"],
+                                    "entry": str(item["id"]),
+                                    "text": entry.get("text", ""),
+                                    "description": entry.get("text", ""),
+                                    "dispute": entry.get("dispute", []),
+                                    "judge_dep": entry.get("judge_dep", []),
+                                    "related_laws": entry.get("related_laws", []),
+                                }
+                            )
+                        break
+            except IndexError:
+                continue
+
+        original_retrieved_res = {
+            "method": "hybrid_bm25_vector",
+            "top_k_used": top_k,
+            "laws_found_count": len(final_retrieved_laws),
+        }
+
+        return original_retrieved_res, final_retrieved_laws, retrieved_facts

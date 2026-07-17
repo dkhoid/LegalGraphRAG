@@ -68,8 +68,9 @@ class InMemoryGraphDB:
 
         # If node has embedding, add to vector index
         if "embedding" in properties and properties["embedding"] is not None:
+            if node_type not in self.embeddings:
+                self.embeddings[node_type] = {}
             self.embeddings[node_type][node_id] = np.array(properties["embedding"])
-            self._update_vector_index(node_type)
 
     def update_node(self, node_id: str, properties: Dict[str, Any]):
         """Update node properties"""
@@ -86,7 +87,6 @@ class InMemoryGraphDB:
         # If embedding is updated, update vector index
         if "embedding" in properties and properties["embedding"] is not None:
             self.embeddings[node_type][node_id] = np.array(properties["embedding"])
-            self._update_vector_index(node_type)
 
     def add_edge(
         self, source: str, target: str, relation_type: str, properties: Optional[Dict] = None
@@ -140,10 +140,18 @@ class InMemoryGraphDB:
         self, query_embedding: np.ndarray, node_type: str, top_k: int = 5
     ) -> List[Dict]:
         """Find most similar nodes based on vector similarity"""
-        if node_type not in self._vector_indexes:
+        if node_type not in self.embeddings:
             return []
 
-        index_data = self._vector_indexes[node_type]
+        # Lazy initialization/update of vector index
+        if node_type not in self._vector_indexes or len(
+            self._vector_indexes[node_type]["ids"]
+        ) != len(self.embeddings[node_type]):
+            self._update_vector_index(node_type)
+
+        index_data = self._vector_indexes.get(node_type)
+        if not index_data:
+            return []
         if len(index_data["vectors"]) == 0:
             return []
 
@@ -172,7 +180,7 @@ class InMemoryGraphDB:
     def compute_pagerank(self) -> Dict[str, float]:
         """Compute PageRank"""
         try:
-            pagerank = nx.pagerank(self.graph.to_undirected())
+            pagerank = nx.pagerank(self.graph)
             return pagerank
         except Exception:
             return {}
@@ -189,7 +197,9 @@ class InMemoryGraphDB:
         try:
             import networkx.algorithms.community as nx_comm
 
-            communities = nx_comm.louvain_communities(self.graph.to_undirected(), seed=42)
+            undirected_graph = self.graph.to_undirected()
+            communities = nx_comm.louvain_communities(undirected_graph, seed=42)
+            del undirected_graph
 
             # Assign community ID
             community_map = {}
@@ -208,16 +218,22 @@ class InMemoryGraphDB:
             "graph": self.graph,
             "nodes_data": self.nodes_data,
             "embeddings": {
-                k: {
-                    nid: emb.tolist() if isinstance(emb, np.ndarray) else emb
-                    for nid, emb in v.items()
-                }
-                for k, v in self.embeddings.items()
+                k: {nid: emb for nid, emb in v.items()} for k, v in self.embeddings.items()
             },
         }
-        with open(filepath, "wb") as f:
-            pickle.dump(data, f)
-        print(f"Graph data saved to {filepath}")
+        # Lưu vào file tạm để đảm bảo an toàn dữ liệu (Atomic Save)
+        temp_filepath = f"{filepath}.tmp"
+        try:
+            with open(temp_filepath, "wb") as f:
+                pickle.dump(data, f)
+            # Dùng os.replace để ghi đè (atomic operation)
+            os.replace(temp_filepath, filepath)
+            print(f"Graph data saved to {filepath}")
+        except Exception as e:
+            if os.path.exists(temp_filepath):
+                os.remove(temp_filepath)
+            print(f"Error saving graph data: {e}")
+            raise e
 
     def load(self, filepath: str):
         """Load graph data from file"""

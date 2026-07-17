@@ -4,16 +4,22 @@ import re
 from .graph_db import GraphDBManager
 from tqdm import tqdm
 from core.utils.logger import logger
+from rank_bm25 import BM25Okapi
+import json
 
 
 def get_embedding(text):
     import os
+    import time
 
     url = os.getenv("embedding_api_url", "http://localhost:11434/api/embed")
     model = os.getenv("embedding_model", "bge-m3")
     api_key = os.getenv("OPENAI_API_KEY", os.getenv("api_key", ""))
 
     headers = {"Content-Type": "application/json"}
+    if not text:
+        return None
+
     if "openai.com" in url or api_key:
         headers["Authorization"] = f"Bearer {api_key}"
         # text-embedding-3-small max length is 8192 tokens.
@@ -23,17 +29,38 @@ def get_embedding(text):
 
     data = {"model": model, "input": text}
 
-    response = requests.post(url, json=data, headers=headers)
+    max_retries = 10
+    base_delay = 1.0
 
-    if response.status_code == 200:
-        result = response.json()
-        if "data" in result and len(result["data"]) > 0:
-            return result["data"][0].get("embedding", [])
-        return result.get("embeddings", [[]])[0]
-    else:
-        print(f"Error: {response.status_code}")
-        print(response.text)
-        return None
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, json=data, headers=headers)
+
+            if response.status_code == 200:
+                result = response.json()
+                if "data" in result and len(result["data"]) > 0:
+                    return result["data"][0].get("embedding", [])
+                return result.get("embeddings", [[]])[0]
+            elif response.status_code == 429:
+                if attempt < max_retries - 1:
+                    sleep_time = base_delay * (1.5**attempt)  # Exponential backoff
+                    # print(f"Rate limit (429). Retrying in {sleep_time:.1f}s...")
+                    time.sleep(sleep_time)
+                    continue
+                else:
+                    print(f"Error 429: Rate limit exceeded after {max_retries} retries.")
+                    return None
+            else:
+                print(f"Error: {response.status_code}")
+                print(response.text)
+                return None
+        except Exception as e:
+            if attempt < max_retries - 1:
+                sleep_time = base_delay * (1.5**attempt)
+                time.sleep(sleep_time)
+            else:
+                print(f"Failed to get embedding due to exception: {e}")
+                return None
 
 
 def summarize_texts(model, text):
@@ -67,7 +94,16 @@ def rerank(model, query_text, neighbors):
     if not neighbors:
         return []
 
-    neighbor_summaries = "\n".join([f"code{n['rank']}：{n['description']}\n" for n in neighbors])
+    neighbor_summaries = "\n".join(
+        [
+            (
+                f"code{n['rank']}：{n['description'][:500]}..."
+                if len(n["description"]) > 500
+                else f"code{n['rank']}：{n['description']}"
+            )
+            for n in neighbors
+        ]
+    )
     prompt = get_prompt("RERANK_PROMPT_TEMPLATE").format(
         neighbor_summaries=neighbor_summaries, query_text=query_text
     )
@@ -159,8 +195,15 @@ def build_relationships():
     db = GraphDBManager.get_db()
 
     # Create Case-to-Law relationships (based on entry matching)
-    # Retrieve all Case nodes and their law attributes from the graph
     case_nodes = db.get_nodes_by_type("Cases")
+
+    # Build lookup for O(1) matching
+    law_nodes_by_entry = {}
+    for node_id, node_info in db.nodes_data.items():
+        if node_info["type"] == "Laws":
+            entry_val = node_info["data"].get("entry")
+            if entry_val is not None:
+                law_nodes_by_entry[str(entry_val)] = node_id
 
     for case_node in tqdm(case_nodes, desc="Linking cases to laws"):
         case_id = case_node["id"]
@@ -170,20 +213,22 @@ def build_relationships():
             continue
 
         for law_entry in law_entries:
-            # Find the matching Law node
-            law_found = False
-            for node_id, node_info in db.nodes_data.items():
-                if node_info["type"] == "Laws" and node_info["data"].get("entry") == int(law_entry):
-                    db.add_edge(case_id, node_id, "RELATES_TO_LAW")
-                    law_found = True
-                    break
-
-            if not law_found:
+            law_entry_str = str(law_entry)
+            if law_entry_str in law_nodes_by_entry:
+                db.add_edge(case_id, law_nodes_by_entry[law_entry_str], "RELATES_TO_LAW")
+            else:
                 print(f"Warning: Law node not found, entry={law_entry}")
 
     # Create Law-to-Issue relationships (based on issue description matching)
-    # Retrieve all Law nodes and their crimes/issues attributes from the graph
     law_nodes = db.get_nodes_by_type("Laws")
+
+    # Build lookup for O(1) exact matching
+    dispute_nodes_by_desc = {}
+    for node_id, node_info in db.nodes_data.items():
+        if node_info["type"] == "Disputes":
+            desc_val = node_info["data"].get("description")
+            if desc_val:
+                dispute_nodes_by_desc[desc_val] = node_id
 
     for law_node in tqdm(law_nodes, desc="Linking laws to crimes"):
         law_id = law_node["id"]
@@ -196,7 +241,6 @@ def build_relationships():
             # Check if relationship already exists
             existing_neighbors = db.get_neighbors(law_id, "RELATED_DISPUTE")
             if existing_neighbors:
-                # Check if a matching issue node already linked
                 found = False
                 for dispute_id in existing_neighbors:
                     dispute_data = db.get_node(dispute_id)
@@ -206,37 +250,35 @@ def build_relationships():
                 if found:
                     continue
 
-            # Attempt exact match
-            dispute_found = False
-            for node_id, node_info in db.nodes_data.items():
-                if (
-                    node_info["type"] == "Disputes"
-                    and node_info["data"].get("description") == dispute_desc
-                ):
-                    db.add_edge(law_id, node_id, "RELATED_DISPUTE", {"match_type": "exact"})
-                    dispute_found = True
-                    break
+            # Attempt exact match using O(1) lookup
+            if dispute_desc in dispute_nodes_by_desc:
+                db.add_edge(
+                    law_id,
+                    dispute_nodes_by_desc[dispute_desc],
+                    "RELATED_DISPUTE",
+                    {"match_type": "exact"},
+                )
+                continue
 
             # Attempt fuzzy match if exact match failed
-            if not dispute_found:
-                for node_id, node_info in db.nodes_data.items():
-                    if node_info["type"] == "Disputes":
-                        desc = node_info["data"].get("description", "")
-                        if dispute_desc in desc or desc in dispute_desc:
-                            db.add_edge(
-                                law_id,
-                                node_id,
-                                "RELATED_DISPUTE",
-                                {"match_type": "fuzzy"},
-                            )
-                            break
+            for node_id, node_info in db.nodes_data.items():
+                if node_info["type"] == "Disputes":
+                    desc = node_info["data"].get("description", "")
+                    if desc and dispute_desc and (dispute_desc in desc or desc in dispute_desc):
+                        db.add_edge(
+                            law_id,
+                            node_id,
+                            "RELATED_DISPUTE",
+                            {"match_type": "fuzzy"},
+                        )
+                        break
 
     # Remove Law nodes with entry <= 101 (general law provisions not relevant to cases)
     nodes_to_delete = []
     for node_id, node_info in db.nodes_data.items():
         if node_info["type"] == "Laws":
             entry = node_info["data"].get("entry")
-            if entry is not None and int(entry) <= 101:
+            if entry is not None and str(entry).isdigit() and int(entry) <= 101:
                 nodes_to_delete.append(node_id)
 
     node_count = len(nodes_to_delete)
@@ -249,7 +291,6 @@ def build_relationships():
         for node_type in db.embeddings:
             if node_id in db.embeddings[node_type]:
                 del db.embeddings[node_type][node_id]
-                db._update_vector_index(node_type)
 
     deleted_count = len(nodes_to_delete)
     print(f"Successfully removed {deleted_count} Law nodes and their relationships")
@@ -269,17 +310,23 @@ def run_knn(top_k=3):
     for node in case_nodes:
         emb = node.get("embedding")
         if emb is not None:
-            case_embeddings.append(np.array(emb))
+            case_embeddings.append(emb)
             case_ids.append(node["id"])
 
     if len(case_embeddings) < 2:
         return
 
-    # Normalize embeddings for fast cosine similarity via dot product
-    case_embeddings = np.array(case_embeddings)
+    # Clear case_nodes to free up memory early
+    del case_nodes
+
+    # Convert to float32 for 50% memory savings
+    case_embeddings = np.array(case_embeddings, dtype=np.float32)
+
+    # Normalize in-place to prevent allocating a new large matrix
     norms = np.linalg.norm(case_embeddings, axis=1, keepdims=True)
     norms[norms == 0] = 1e-10  # Avoid division by zero
-    normalized_embeddings = case_embeddings / norms
+    case_embeddings /= norms
+    normalized_embeddings = case_embeddings
 
     num_cases = len(case_ids)
     batch_size = 1000  # Adjust if memory is still an issue
@@ -341,7 +388,17 @@ def create_clusters(model):
     community_ids = sorted(list(community_ids))
     print(f"Detected {len(community_ids)} communities.")
 
-    for community_id in tqdm(community_ids, desc="Creating clusters"):
+    # Auto-save before starting the long clustering process
+    try:
+        import os
+
+        graph_path = os.getenv("graph_db_path", "./data/processed/graph.pkl")
+        GraphDBManager.save(graph_path)
+        print(f"Checkpoint saved before clustering to {graph_path}")
+    except Exception as e:
+        print(f"Failed to save checkpoint: {e}")
+
+    for i, community_id in enumerate(tqdm(community_ids, desc="Creating clusters")):
         # Select key nodes based on composite score of PageRank and degree centrality
         important_nodes = []
         for node_id, node_info in db.nodes_data.items():
@@ -360,7 +417,15 @@ def create_clusters(model):
                 )
 
         important_nodes.sort(key=lambda x: x["composite_score"], reverse=True)
-        descriptions = [node["description"] for node in important_nodes[:10]]
+        # Giảm thiểu lượng token: Lấy top 3 case thay vì 10, và cắt ngắn mỗi case còn tối đa 500 ký tự
+        descriptions = [
+            (
+                node["description"][:500] + "..."
+                if len(node["description"]) > 500
+                else node["description"]
+            )
+            for node in important_nodes[:3]
+        ]
 
         if not descriptions:
             continue
@@ -426,12 +491,21 @@ Key Case Descriptions:
         )
 
         # Link Cluster to its member Case nodes
+        key_nodes = []
         for node_id, node_info in db.nodes_data.items():
             if (
                 node_info["type"] == "Cases"
                 and node_info["data"].get("communityId") == community_id
             ):
-                db.add_edge(node_id, cluster_id, "BELONGS_TO")
+                key_nodes.append(node_id)
+                db.add_edge(node_id, cluster_id, "BELONGS_TO_CLUSTER")
+
+        # Auto-save every 50 clusters
+        if (i + 1) % 50 == 0:
+            try:
+                GraphDBManager.save(graph_path)
+            except Exception:
+                pass
 
 
 def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
@@ -625,6 +699,43 @@ def query_similar_nodes(model, query_text, retrieve_config):
     else:
         direct_result_cases, direct_result_laws = [], []
 
+    # Hybrid BM25 logic to find missing laws directly
+    bm25_laws = []
+    try:
+        with open("./data/processed/law_to_dispute.json", "r", encoding="utf-8") as f:
+            law_to_dispute = json.load(f)
+
+        corpus = []
+        law_mapping = []
+        for law in law_to_dispute:
+            for item in law.get("items", [law]):
+                text = item.get("text", "")
+                if text:
+                    corpus.append(text)
+                    law_mapping.append(
+                        {
+                            "id": law["id"],
+                            "entry": str(law["id"]),
+                            "text": text,
+                            "description": text,
+                            "dispute": item.get("dispute", []),
+                            "judge_dep": item.get("judge_dep", []),
+                            "related_laws": item.get("related_laws", []),
+                        }
+                    )
+        if corpus:
+            tokenized_corpus = [doc.lower().split() for doc in corpus]
+            bm25 = BM25Okapi(tokenized_corpus)
+            tokenized_query = query_text.lower().split()
+            bm25_scores = bm25.get_scores(tokenized_query)
+            top_k_bm25 = 3
+            top_indices = sorted(
+                range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
+            )[:top_k_bm25]
+            bm25_laws = [law_mapping[i] for i in top_indices if bm25_scores[i] > 0]
+    except Exception as e:
+        print(f"BM25 Graph Error: {e}")
+
     # Aggregate results
     result_cases = []
     seen_ids_cases = set()  # for deduplication
@@ -695,6 +806,13 @@ def query_similar_nodes(model, query_text, retrieve_config):
                     }
                 )
                 seen_ids_laws.add(neighbor["id"])
+    # Append BM25 laws to the results
+    for law in bm25_laws:
+        if law["id"] not in seen_ids_laws:
+            result_laws.append(law)
+            seen_ids_laws.add(law["id"])
+            direct_result_laws.append(law)
+
     original_retrieved_res = {
         "top": {
             "clusters": top_result_clusters,
@@ -755,7 +873,7 @@ def query_similar_laws(dispute_list, top_k=1):
 
     for dispute in dispute_list:
         # Convert crime description to embedding
-        dispute_embedding = get_embedding(crime)
+        dispute_embedding = get_embedding(dispute)
         if dispute_embedding is None:
             continue  # Skip if embedding generation fails
 
@@ -808,6 +926,45 @@ def construct_feature_graph(model, nodes_data):
 
     GraphDBManager.initialize()
 
+    db = GraphDBManager.get_db()
+
+    print("Attempting to recover generated embeddings from memory cache...")
+    try:
+        cache_by_desc = {}
+        for nid, c_node in db.nodes_data.items():
+            c_data = c_node.get("data", {})
+            if "description" in c_data and "embedding" in c_data:
+                cache_by_desc[c_data["description"]] = c_data["embedding"]
+
+        recovered = 0
+        for k in ["case", "law", "dispute"]:
+            for node in nodes_data.get(k, []):
+                desc = node.get("description")
+                if desc and desc in cache_by_desc:
+                    node["embedding"] = cache_by_desc[desc]
+                    recovered += 1
+        print(f"Successfully recovered {recovered} embeddings!")
+
+        del cache_by_desc
+    except Exception as e:
+        print("Could not recover embeddings:", e)
+
+    # VERY IMPORTANT: Clear the old graph data to prevent infinitely duplicating nodes
+    # because force_rebuild expects a fresh graph construction!
+    print("Clearing old graph to prevent duplication and free RAM...")
+    db.graph.clear()
+    db.nodes_data.clear()
+    db.embeddings = {"Cases": {}, "Laws": {}, "Disputes": {}, "Cluster": {}}
+    db._vector_indexes = {
+        "Cases": {"vectors": [], "ids": []},
+        "Laws": {"vectors": [], "ids": []},
+        "Disputes": {"vectors": [], "ids": []},
+        "Cluster": {"vectors": [], "ids": []},
+    }
+    import gc
+
+    gc.collect()
+
     case_nodes_data, law_nodes_data, dispute_nodes_data = (
         nodes_data["case"],
         nodes_data["law"],
@@ -817,7 +974,9 @@ def construct_feature_graph(model, nodes_data):
     def process_nodes(nodes_data_list, desc):
         def _get_emb(item):
             i, node = item
-            emb = get_embedding(node["description"])
+            if node.get("embedding") is not None:
+                return i, node["id"], node["embedding"]
+            emb = get_embedding(node.get("description") or "")
             return i, node["id"], emb
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
@@ -845,11 +1004,21 @@ def construct_feature_graph(model, nodes_data):
     run_knn(top_k=3)
     create_clusters(model)
 
+    # Lưu file pkl trước khi sync sang Neo4j
+    import os
+
+    graph_path = os.getenv("graph_db_path", "./data/processed/graph.pkl")
+    db = GraphDBManager.get_db()
+    try:
+        GraphDBManager.save(graph_path)
+        logger.info(f"Đã lưu graph cục bộ tại {graph_path} trước khi sync Neo4j.")
+    except Exception as e:
+        logger.error(f"Lỗi khi lưu graph: {e}")
+
     # Sync to Neo4j
     try:
         from core.graph_construct.neo4j_manager import neo4j_manager
 
-        db = GraphDBManager.get_db()
         neo4j_manager.sync_from_memory_graph(db)
     except Exception as e:
         logger.error(f"Failed to sync graph to Neo4j: {e}")
