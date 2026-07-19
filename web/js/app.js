@@ -15,12 +15,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const retrievedLawsList = document.getElementById('retrievedLawsList');
     const retrievedFactsList = document.getElementById('retrievedFactsList');
 
+    // API Key DOM
+    const updateKeyBtn = document.getElementById('updateKeyBtn');
+    const apiKeyInput = document.getElementById('apiKey');
+
+    if (updateKeyBtn) {
+        // Khôi phục key từ localStorage
+        const savedKey = localStorage.getItem('openai_api_key');
+        if (savedKey) {
+            apiKeyInput.value = savedKey;
+        }
+
+        updateKeyBtn.addEventListener('click', async () => {
+            const newKey = apiKeyInput.value.trim();
+            if (!newKey) {
+                alert("Vui lòng nhập API Key!");
+                return;
+            }
+
+            updateKeyBtn.disabled = true;
+            updateKeyBtn.textContent = "Đang lưu...";
+
+            try {
+                // Lưu key vào localStorage thay vì gửi lên server
+                localStorage.setItem('openai_api_key', newKey);
+                alert("Đã lưu API Key vào trình duyệt (localStorage).");
+            } catch (err) {
+                alert("Lỗi lưu Key: " + err.message);
+            } finally {
+                updateKeyBtn.disabled = false;
+                updateKeyBtn.textContent = "Cập nhật";
+            }
+        });
+    }
+
     analyzeBtn.addEventListener('click', async () => {
         const fact = factInput.value.trim();
         const topK = parseInt(topKInput.value) || 5;
 
         if (!fact) {
             alert('Vui lòng nhập tình tiết vụ án!');
+            factInput.focus();
+            return;
+        }
+
+        if (fact.length < 50) {
+            alert("Vui lòng miêu tả tình huống của bạn chi tiết hơn (ít nhất 15 từ) để hệ thống có thể tìm kiếm dữ liệu pháp lý chính xác nhất. Ví dụ: 'Tôi cho một người vay 500 triệu đồng có viết giấy tay, đã quá hạn...'");
             factInput.focus();
             return;
         }
@@ -33,6 +73,9 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingState.classList.remove('hidden');
 
         try {
+            // Lấy API key từ input hoặc localStorage
+            const apiKey = apiKeyInput.value.trim() || localStorage.getItem('openai_api_key');
+
             // Gọi API
             const response = await fetch('/analyze_civil', {
                 method: 'POST',
@@ -41,7 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({
                     fact: fact,
-                    top_k: topK
+                    top_k: topK,
+                    api_key: apiKey || null
                 })
             });
 

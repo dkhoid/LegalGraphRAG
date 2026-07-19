@@ -29,12 +29,17 @@ class GraphRetriever(BaseRetriever):
         prompt_text = get_prompt("RETRIEVE_LAW_PROMPT").format(name=name, fact=fact)
         response = self.model.generate_response(prompt_text, max_length=256)
 
+        import json
+
         try:
             first = response.find("[")
             last = response.rfind("]") + 1
-            disputes = eval(response[first:last])
-        except (ValueError, SyntaxError, Exception):
-            return []
+            array_str = response[first:last].replace("'", '"')  # Fix single quotes for JSON
+            disputes = json.loads(array_str)
+            if not isinstance(disputes, list):
+                disputes = []
+        except Exception:
+            disputes = []
 
         laws = query_similar_laws(disputes, top_k=1)
         return laws
@@ -87,20 +92,23 @@ class GraphRetriever(BaseRetriever):
         # 4. Deduplicate and reconstruct laws
         final_retrieved_laws = []
         seen_law_ids = set()
+
+        import ast
+
         for law in retrieved_laws:
             if law["id"] in seen_law_ids:
                 continue
             seen_law_ids.add(law["id"])
 
-            # Ensure eval parsing works safely
+            # Ensure safe parsing works safely
             try:
-                law["judge_dep"] = eval(str(law.get("judge_dep", "[]")))
-            except:
+                law["judge_dep"] = ast.literal_eval(str(law.get("judge_dep", "[]")))
+            except Exception:
                 law["judge_dep"] = []
 
             try:
-                law["related_laws"] = eval(str(law.get("related_laws", "[]")))
-            except:
+                law["related_laws"] = ast.literal_eval(str(law.get("related_laws", "[]")))
+            except Exception:
                 law["related_laws"] = []
 
             final_retrieved_laws.append(law)

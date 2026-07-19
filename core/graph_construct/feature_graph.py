@@ -7,6 +7,46 @@ from core.utils.logger import logger
 from rank_bm25 import BM25Okapi
 import json
 
+_bm25_instance = None
+_bm25_law_mapping = None
+
+
+def _get_bm25_index():
+    global _bm25_instance, _bm25_law_mapping
+    if _bm25_instance is not None:
+        return _bm25_instance, _bm25_law_mapping
+
+    try:
+        with open("./data/processed/law_to_dispute.json", "r", encoding="utf-8") as f:
+            law_to_dispute = json.load(f)
+
+        corpus = []
+        law_mapping = []
+        for law in law_to_dispute:
+            for item in law.get("items", [law]):
+                text = item.get("text", "")
+                if text:
+                    corpus.append(text)
+                    law_mapping.append(
+                        {
+                            "id": law["id"],
+                            "entry": str(law["id"]),
+                            "text": text,
+                            "description": text,
+                            "dispute": item.get("dispute", []),
+                            "judge_dep": item.get("judge_dep", []),
+                            "related_laws": item.get("related_laws", []),
+                        }
+                    )
+        if corpus:
+            tokenized_corpus = [doc.lower().split() for doc in corpus]
+            _bm25_instance = BM25Okapi(tokenized_corpus)
+            _bm25_law_mapping = law_mapping
+    except Exception as e:
+        print(f"BM25 Graph Init Error: {e}")
+
+    return _bm25_instance, _bm25_law_mapping
+
 
 def get_embedding(text):
     import os
@@ -559,6 +599,8 @@ def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
         case_similarities.sort(key=lambda x: x[1], reverse=True)
 
         for case_data, similarity in case_similarities[:top_k]:
+            if similarity < 0.55:
+                continue
             neighbors.append(
                 {
                     "id": case_data["id"],
@@ -608,6 +650,8 @@ def search_similar_nodes_direct(model, query_embedding, query_text, top_k=5):
 
     neighbors = []
     for record in neighbor_results:
+        if record["similarity"] < 0.55:
+            continue
         neighbors.append(
             {
                 "id": record["id"],
@@ -701,31 +745,9 @@ def query_similar_nodes(model, query_text, retrieve_config):
 
     # Hybrid BM25 logic to find missing laws directly
     bm25_laws = []
-    try:
-        with open("./data/processed/law_to_dispute.json", "r", encoding="utf-8") as f:
-            law_to_dispute = json.load(f)
-
-        corpus = []
-        law_mapping = []
-        for law in law_to_dispute:
-            for item in law.get("items", [law]):
-                text = item.get("text", "")
-                if text:
-                    corpus.append(text)
-                    law_mapping.append(
-                        {
-                            "id": law["id"],
-                            "entry": str(law["id"]),
-                            "text": text,
-                            "description": text,
-                            "dispute": item.get("dispute", []),
-                            "judge_dep": item.get("judge_dep", []),
-                            "related_laws": item.get("related_laws", []),
-                        }
-                    )
-        if corpus:
-            tokenized_corpus = [doc.lower().split() for doc in corpus]
-            bm25 = BM25Okapi(tokenized_corpus)
+    bm25, law_mapping = _get_bm25_index()
+    if bm25 and law_mapping:
+        try:
             tokenized_query = query_text.lower().split()
             bm25_scores = bm25.get_scores(tokenized_query)
             top_k_bm25 = 3
@@ -733,8 +755,8 @@ def query_similar_nodes(model, query_text, retrieve_config):
                 range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
             )[:top_k_bm25]
             bm25_laws = [law_mapping[i] for i in top_indices if bm25_scores[i] > 0]
-    except Exception as e:
-        print(f"BM25 Graph Error: {e}")
+        except Exception as e:
+            print(f"BM25 Graph Error: {e}")
 
     # Aggregate results
     result_cases = []
@@ -806,12 +828,22 @@ def query_similar_nodes(model, query_text, retrieve_config):
                     }
                 )
                 seen_ids_laws.add(neighbor["id"])
-    # Append BM25 laws to the results
-    for law in bm25_laws:
-        if law["id"] not in seen_ids_laws:
-            result_laws.append(law)
-            seen_ids_laws.add(law["id"])
-            direct_result_laws.append(law)
+    # Reciprocal Rank Fusion (RRF) for Laws
+    rrf_scores = {}
+    law_dict = {}
+
+    def add_to_rrf(law_list, k=60):
+        for i, law in enumerate(law_list):
+            lid = law["id"]
+            if lid not in law_dict:
+                law_dict[lid] = law
+            rrf_scores[lid] = rrf_scores.get(lid, 0.0) + 1.0 / (k + i + 1)
+
+    add_to_rrf(result_laws)
+    add_to_rrf(bm25_laws)
+
+    sorted_law_ids = sorted(rrf_scores.keys(), key=lambda lid: rrf_scores[lid], reverse=True)
+    result_laws = [law_dict[lid] for lid in sorted_law_ids]
 
     original_retrieved_res = {
         "top": {
@@ -838,6 +870,8 @@ def query_similar_laws_naive(query_text, top_k=1):
     seen_law_ids = set()  # For deduplication of law nodes
 
     for law_record in law_results:
+        if law_record["similarity"] < 0.55:
+            continue
         entry = law_record.get("entry")
         if entry is not None and entry not in seen_law_ids:
             result_laws.append(

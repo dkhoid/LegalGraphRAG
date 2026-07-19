@@ -47,7 +47,11 @@ class OpenAIBaseModel(BaseModel):
         )
 
     def generate_response(
-        self, user_input: str, max_length: int = 4096, temperature: float = 0.1
+        self,
+        user_input: str,
+        max_length: int = 4096,
+        temperature: float = 0.1,
+        api_key: Optional[str] = None,
     ) -> str:
         """
         Generate response
@@ -56,12 +60,17 @@ class OpenAIBaseModel(BaseModel):
             user_input: User input
             max_length: Maximum number of tokens
             temperature: Temperature parameter
+            api_key: Optional per-request API key to use instead of the global one
 
         Returns:
             Model generated response text
         """
+        client = self.client
+        if api_key:
+            client = OpenAI(api_key=api_key, base_url=self.base_url, timeout=30.0, max_retries=0)
+
         try:
-            response = self.client.chat.completions.create(
+            response = client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": user_input}],
                 max_tokens=max_length,
@@ -72,3 +81,12 @@ class OpenAIBaseModel(BaseModel):
         except Exception as e:
             print(f"API call error: {e}")
             return "API call failed"
+
+    def update_api_key(self, api_key: str):
+        """
+        Update the API key and recreate the client at runtime.
+        """
+        self.api_key = api_key
+        self.client = OpenAI(
+            api_key=self.api_key, base_url=self.base_url, timeout=30.0, max_retries=0
+        )

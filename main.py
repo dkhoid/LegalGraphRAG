@@ -92,10 +92,16 @@ async def root():
 class CaseRequest(BaseModel):
     fact: str = Field(..., max_length=5000, description="Tình tiết vụ án cần phân tích")
     top_k: int = Field(5, ge=1, le=10, description="Số lượng kết quả liên quan tối đa")
+    api_key: str | None = Field(None, description="API Key tùy chọn cho request hiện tại")
 
 
 class ChatRequest(BaseModel):
     query: str = Field(..., max_length=5000, description="Câu hỏi pháp lý")
+    api_key: str | None = Field(None, description="API Key tùy chọn cho request hiện tại")
+
+
+class APIKeyRequest(BaseModel):
+    api_key: str = Field(..., description="API Key mới cần cập nhật")
 
 
 # Output Models
@@ -134,32 +140,32 @@ def build_civil_prompt(
 ) -> str:
     prompt_template = """
 Bạn là một chuyên gia tư vấn pháp lý chuyên về Luật Dân sự Việt Nam.
-Dựa trên các quy định pháp luật (điều luật) và các tiền lệ (án lệ/vụ án tương tự) được cung cấp, hãy phân tích tình tiết vụ án sau đây và đưa ra hướng giải quyết.
+Dưới đây là các quy định pháp luật (điều luật) và các tiền lệ (án lệ/vụ án tương tự) được trích xuất từ hệ thống dữ liệu:
 
-**Thông tin đầu vào:**
 - Quy định pháp luật (Laws):
 {formatted_laws}
 
 - Án lệ/Vụ án tương tự (Similar Cases):
 {formatted_facts}
 
-- Tình tiết vụ án cần phân tích (Fact):
+**Tình tiết vụ án của người dùng cần phân tích:**
 {fact}
 
 **Hướng dẫn phân tích:**
-1. Xác định bản chất của quan hệ pháp luật và loại tranh chấp (VD: Tranh chấp hợp đồng, Bồi thường thiệt hại, Ly hôn, v.v.).
-2. Xác định các điều luật cụ thể áp dụng phù hợp nhất cho vụ án này từ danh sách luật được cung cấp.
-3. Đưa ra hướng giải quyết rõ ràng (VD: Ai là người chịu trách nhiệm? Bồi thường như thế nào? Xử lý hợp đồng ra sao?).
-4. Phân tích của bạn phải dựa trên các điều luật và tình tiết đã cho. Không được tự bịa ra luật.
+1. Hãy đối chiếu tình tiết vụ án của người dùng với các dữ liệu được trích xuất ở trên.
+2. Nếu các điều luật hoặc vụ án trích xuất **KHÔNG LIÊN QUAN** đến tình tiết của người dùng (ví dụ: người dùng hỏi về đòi nợ nhưng dữ liệu lại về hôn nhân/thai sản), hãy **BỎ QUA** dữ liệu trích xuất đó và tự suy luận dựa trên kiến thức pháp luật Dân sự Việt Nam của bạn (ví dụ: Bộ luật Dân sự về hợp đồng vay tài sản, nghĩa vụ trả nợ).
+3. Xác định bản chất của quan hệ pháp luật và loại tranh chấp (VD: Tranh chấp hợp đồng vay tài sản, Bồi thường thiệt hại, v.v.).
+4. Xác định các điều luật cụ thể áp dụng phù hợp nhất. Nếu dữ liệu cung cấp bị sai, hãy dùng kiến thức chuẩn xác của bạn để chỉ ra điều luật đúng. KHÔNG ĐƯỢC bịa ra số hiệu luật không tồn tại (như Điều 999999).
+5. Đưa ra hướng giải quyết rõ ràng (VD: Ai là người chịu trách nhiệm? Có thể khởi kiện ở đâu? Thủ tục đòi nợ ra sao?).
 
-YÊU CẦU QUAN TRỌNG: Toàn bộ câu trả lời (bao gồm nội dung phân tích) PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT.
+YÊU CẦU QUAN TRỌNG: Toàn bộ câu trả lời PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT.
 
 **Định dạng đầu ra:**
 Bạn CHỈ ĐƯỢC phép trả về một đối tượng JSON hợp lệ. Không bao gồm các khối mã markdown (như ```json), chỉ trả về JSON thuần túy.
 Đối tượng JSON phải tuân thủ chính xác cấu trúc sau:
 {{
     "dispute_type": "Tên loại tranh chấp dân sự",
-    "applicable_laws": ["Điều X", "Điều Y"],
+    "applicable_laws": ["Điều X Luật Y", "Điều Z Luật W"],
     "resolution_direction": "Giải thích chi tiết về hướng giải quyết pháp lý và trách nhiệm (BẰNG TIẾNG VIỆT)"
 }}
 """
@@ -215,7 +221,7 @@ async def analyze_civil(request: CaseRequest):
 
         # Fix Async Blocking: Run LLM generation in threadpool
         raw_response = await run_in_threadpool(
-            rag_system.model.generate_response, prompt_response.prompt, 4096
+            rag_system.model.generate_response, prompt_response.prompt, 4096, 0.1, request.api_key
         )
 
         # Better JSON Parsing with fallback handling
@@ -289,6 +295,24 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"Error processing chat: {e}")
         raise HTTPException(status_code=500, detail="Internal error during chat processing")
+
+
+@app.post("/api/set_key")
+async def set_api_key(request: APIKeyRequest):
+    if not rag_system or not rag_system.model:
+        raise HTTPException(status_code=500, detail="RAG system is not initialized.")
+    try:
+        if hasattr(rag_system.model, "update_api_key"):
+            rag_system.model.update_api_key(request.api_key)
+            return {"status": "success", "message": "Đã cập nhật API Key thành công trên server."}
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Mô hình hiện tại không hỗ trợ cập nhật API key lúc runtime.",
+            )
+    except Exception as e:
+        logger.error(f"Error updating API key: {e}")
+        raise HTTPException(status_code=500, detail="Không thể cập nhật API Key")
 
 
 if __name__ == "__main__":

@@ -79,6 +79,7 @@ def run_evaluation(
     datasets_path: str = "./datas",
     build_graph: bool = True,
     force_rebuild: bool = False,
+    limit: Optional[int] = None,
 ):
     config = LegalGraphRAGConfig.from_env_file(dotenv_path)
 
@@ -120,10 +121,12 @@ def run_evaluation(
         logger.info()
 
     test_cases = load_test_cases(datasets, datasets_path)
+    if limit is not None:
+        test_cases = test_cases[:limit]
     logger.info(f"Loaded {len(test_cases)} test cases from {datasets} dataset")
 
     if devices is None:
-        devices = ["cuda:2", "cuda:3"]
+        devices = ["cpu"]
     if not devices or len(devices) == 0:
         raise ValueError("At least one device must be specified")
     num_processes = len(devices)
@@ -263,6 +266,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Force rebuild graph even if it already exists",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit the number of cases to evaluate",
+    )
 
     args = parser.parse_args()
 
@@ -276,4 +285,5 @@ if __name__ == "__main__":
         datasets_path=args.datasets_path if args.datasets_path else "./datas",
         build_graph=not args.no_build_graph,
         force_rebuild=args.force_rebuild,
+        limit=args.limit,
     )

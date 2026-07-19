@@ -34,3 +34,7 @@ class BaseModel(ABC):
     def release_model(self):
         """Release resources occupied by model (optional implementation)"""
         pass
+
+    def update_api_key(self, api_key: str):
+        """Update the API key of the model at runtime (optional implementation)"""
+        pass

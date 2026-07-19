@@ -18,6 +18,37 @@ class VectorRetriever(BaseRetriever):
     Retriever that uses Hybrid Search (BM25 + Vector Cosine Similarity).
     """
 
+    def __init__(self, model):
+        super().__init__(model)
+        self._bm25 = None
+        self._law_mapping = None
+
+    def _init_bm25(self, law_to_dispute):
+        if self._bm25 is not None:
+            return
+
+        corpus = []
+        self._law_mapping = []
+        for law in law_to_dispute:
+            for item in law.get("items", [law]):
+                text = item.get("text", "")
+                if text:
+                    corpus.append(text)
+                    self._law_mapping.append(
+                        {
+                            "id": law["id"],
+                            "entry": str(law["id"]),
+                            "text": text,
+                            "description": text,
+                            "dispute": item.get("dispute", []),
+                            "judge_dep": item.get("judge_dep", []),
+                            "related_laws": item.get("related_laws", []),
+                        }
+                    )
+
+        tokenized_corpus = [doc.lower().split(" ") for doc in corpus]
+        self._bm25 = BM25Okapi(tokenized_corpus)
+
     def retrieve(
         self,
         case: Dict[str, Any],
@@ -42,29 +73,9 @@ class VectorRetriever(BaseRetriever):
         retrieved_laws_raw = query_similar_laws_naive(query_text, top_k=top_k * 2)
 
         # 2b. BM25 Search
-        corpus = []
-        law_mapping = []
-        for law in law_to_dispute:
-            for item in law.get("items", [law]):
-                text = item.get("text", "")
-                if text:
-                    corpus.append(text)
-                    law_mapping.append(
-                        {
-                            "id": law["id"],
-                            "entry": str(law["id"]),
-                            "text": text,
-                            "description": text,
-                            "dispute": item.get("dispute", []),
-                            "judge_dep": item.get("judge_dep", []),
-                            "related_laws": item.get("related_laws", []),
-                        }
-                    )
-
-        tokenized_corpus = [doc.lower().split(" ") for doc in corpus]
-        bm25 = BM25Okapi(tokenized_corpus)
+        self._init_bm25(law_to_dispute)
         tokenized_query = query_text.lower().split(" ")
-        bm25_scores = bm25.get_scores(tokenized_query)
+        bm25_scores = self._bm25.get_scores(tokenized_query)
 
         # Get top K from BM25
         top_n = top_k * 2
@@ -72,7 +83,7 @@ class VectorRetriever(BaseRetriever):
             range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
         )[:top_n]
 
-        bm25_results = [law_mapping[i] for i in top_bm25_indices if bm25_scores[i] > 0]
+        bm25_results = [self._law_mapping[i] for i in top_bm25_indices if bm25_scores[i] > 0]
 
         retrieved_law_entries = [str(law["entry"]) for law in retrieved_laws_raw]
         retrieved_law_entries.extend([str(law["entry"]) for law in bm25_results])
