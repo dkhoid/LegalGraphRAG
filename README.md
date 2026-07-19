@@ -20,7 +20,7 @@
 
 ```text
 LegalGraphRAG/
-├── api_server.py              # FastAPI server for Vietnamese Civil Law
+├── main.py                    # FastAPI server for Vietnamese Civil Law
 ├── web/                       # Frontend web interface
 ├── core/                      # Core modules for Graph RAG
 ├── scripts/                   # Data fetch and generation scripts
@@ -66,7 +66,7 @@ python scripts/generate_sample_cases.py
 
 Start the FastAPI backend:
 ```bash
-python api_server.py
+python main.py
 ```
 Open your browser and navigate to: `http://localhost:8000/`
 
@@ -81,4 +81,4 @@ This will create a `graph_view.html` file that can be opened in any browser.
 ---
 
 ## ⚙️ **Configuration**
-Configuration is managed via `.env`. See `env.example` for the full configuration list, specifically Model APIs used by `api_server.py`.
+Configuration is managed via `.env`. See `env.example` for the full configuration list, specifically Model APIs used by `main.py`.

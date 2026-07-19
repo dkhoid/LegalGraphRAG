@@ -4,7 +4,7 @@ import uuid
 import numpy as np
 import requests
 
-sys.path.append(os.path.abspath("."))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from dotenv import load_dotenv
 
 load_dotenv()

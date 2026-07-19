@@ -2,7 +2,7 @@ import os
 import sys
 
 # Thêm đường dẫn thư mục gốc vào sys.path để import các module core
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
 from core.utils.logger import logger
