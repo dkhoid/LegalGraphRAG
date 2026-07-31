@@ -149,14 +149,9 @@ def locate_law(law, laws):
 
 def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
     from core.retriever.graph_retriever import GraphRetriever
-    from core.retriever.vector_retriever import VectorRetriever
 
-    # Select retriever method
-    method = retrieve_config.get("method", "graph")
-    if method == "vector":
-        retriever = VectorRetriever(chatbot)
-    else:
-        retriever = GraphRetriever(chatbot)
+    # Always use GraphRetriever (which now handles Neo4j vector + fulltext hybrid search natively)
+    retriever = GraphRetriever(chatbot)
 
     # Cap on how many laws to evaluate in judge_law (prevents unbounded API calls)
     max_judge_laws = retrieve_config.get("max_judge_laws", 8)

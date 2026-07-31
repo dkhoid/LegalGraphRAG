@@ -65,52 +65,141 @@ class GraphRetriever(BaseRetriever):
         features = case.get("feature", {})
         query_text = concat_feature_descriptions(features)
 
-        # 1. Retrieve using Graph traversal
-        original_retrieved_res, retrieved_facts, retrieved_laws = query_similar_nodes(
-            self.model, query_text, retrieve_config
-        )
+        # Get query embedding
+        from core.graph_construct.feature_graph import get_embedding
+
+        query_embedding = get_embedding(query_text)
+
+        original_retrieved_res = {}
+        retrieved_facts = []
+        retrieved_laws = []
+        seen_case_ids = set()
+        seen_law_ids = set()
+
+        from core.graph_construct.neo4j_manager import neo4j_manager
+
+        if not neo4j_manager.driver:
+            from core.utils.logger import logger
+
+            logger.error("Neo4j driver not initialized. GraphRetriever failed.")
+            return {}, [], []
+
+        with neo4j_manager.driver.session() as session:
+            # 1. Vector Search for Cases
+            if query_embedding and retrieve_config.get("top_retrieve", True):
+                top_k = retrieve_config.get("top_retrieve_top_k", 3)
+                vector_query = """
+                CALL db.index.vector.queryNodes('case_embeddings', $top_k, $query_embedding)
+                YIELD node AS case, score
+                OPTIONAL MATCH (case)-[:RELATES_TO_LAW]->(l:Laws)
+                RETURN case, collect(l) AS laws, score
+                ORDER BY score DESC
+                """
+                results = session.run(vector_query, top_k=top_k, query_embedding=query_embedding)
+                for record in results:
+                    c = record["case"]
+                    if c["id"] not in seen_case_ids:
+                        seen_case_ids.add(c["id"])
+                        retrieved_facts.append(
+                            {
+                                "id": c["id"],
+                                "caseId": c.get("caseId"),
+                                "description": c.get("description"),
+                                "dispute": c.get("dispute", []),
+                                "law": c.get("law", []),
+                            }
+                        )
+                    for l in record["laws"]:
+                        if l and l["id"] not in seen_law_ids:
+                            seen_law_ids.add(l["id"])
+                            retrieved_laws.append(
+                                {
+                                    "id": l["id"],
+                                    "entry": l.get("entry"),
+                                    "description": l.get("description"),
+                                    "judge_dep": l.get("judge_dep", "[]"),
+                                    "related_laws": l.get("related_laws", "[]"),
+                                }
+                            )
+
+            # 2. Fulltext Search for Cases (BM25 replacement)
+            # Neo4j fulltext requires lucene query syntax. We split words and use OR operator.
+            if retrieve_config.get("direct_retrieve", True):
+                import re
+
+                clean_query = re.sub(r"[^\w\s]", "", query_text)
+                words = clean_query.split()
+                if words:
+                    lucene_query = " OR ".join(
+                        [f"*{w}*" for w in words[:10]]
+                    )  # limit to first 10 words to avoid parsing errors
+                    top_k_bm25 = retrieve_config.get("direct_retrieve_top_k", 3)
+                    text_query = """
+                    CALL db.index.fulltext.queryNodes('case_fulltext', $lucene_query, {limit: $top_k})
+                    YIELD node AS case, score
+                    OPTIONAL MATCH (case)-[:RELATES_TO_LAW]->(l:Laws)
+                    RETURN case, collect(l) AS laws, score
+                    ORDER BY score DESC
+                    """
+                    try:
+                        results = session.run(
+                            text_query, lucene_query=lucene_query, top_k=top_k_bm25
+                        )
+                        for record in results:
+                            c = record["case"]
+                            if c["id"] not in seen_case_ids:
+                                seen_case_ids.add(c["id"])
+                                retrieved_facts.append(
+                                    {
+                                        "id": c["id"],
+                                        "caseId": c.get("caseId"),
+                                        "description": c.get("description"),
+                                        "dispute": c.get("dispute", []),
+                                        "law": c.get("law", []),
+                                    }
+                                )
+                            for l in record["laws"]:
+                                if l and l["id"] not in seen_law_ids:
+                                    seen_law_ids.add(l["id"])
+                                    retrieved_laws.append(
+                                        {
+                                            "id": l["id"],
+                                            "entry": l.get("entry"),
+                                            "description": l.get("description"),
+                                            "judge_dep": l.get("judge_dep", "[]"),
+                                            "related_laws": l.get("related_laws", "[]"),
+                                        }
+                                    )
+                    except Exception as e:
+                        print(f"Fulltext search error: {e}")
 
         if not retrieved_facts:
             return {}, [], []
 
-        # 2. Augment Laws using LLM if configured
+        # 3. Augment Laws using LLM if configured
         augmented_laws = []
         if retrieve_config.get("augment_retrieve", False):
             augmented_laws = self._retrieve_law_augment(case)
             original_retrieved_res["augmented"] = augmented_laws
 
-        retrieved_laws = retrieved_laws + augmented_laws
+        for law in augmented_laws:
+            if law["id"] not in seen_law_ids:
+                seen_law_ids.add(law["id"])
+                retrieved_laws.append(law)
 
-        # 3. Associate facts with full db objects
-        for item in retrieved_facts:
-            for db_case in cases_db:
-                if db_case["id"] == item["caseId"]:
-                    item["dispute"] = db_case.get("dispute", [])
-                    item["law"] = db_case.get("law", [])
-                    break
-
-        # 4. Deduplicate and reconstruct laws
+        # 4. Safe parsing
         final_retrieved_laws = []
-        seen_law_ids = set()
-
         import ast
 
         for law in retrieved_laws:
-            if law["id"] in seen_law_ids:
-                continue
-            seen_law_ids.add(law["id"])
-
-            # Ensure safe parsing works safely
             try:
                 law["judge_dep"] = ast.literal_eval(str(law.get("judge_dep", "[]")))
             except Exception:
                 law["judge_dep"] = []
-
             try:
                 law["related_laws"] = ast.literal_eval(str(law.get("related_laws", "[]")))
             except Exception:
                 law["related_laws"] = []
-
             final_retrieved_laws.append(law)
 
         return original_retrieved_res, final_retrieved_laws, retrieved_facts

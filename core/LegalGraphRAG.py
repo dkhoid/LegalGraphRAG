@@ -242,35 +242,17 @@ class LegalGraphRAG:
         # Initialize model
         self.model = self._init_model()
 
-        # Load data
-        self.cases_db = self._load_cases_db()
-        self.law_to_dispute = self._load_law_to_dispute()
+        # Load data (disabled for Neo4j refactoring to save memory)
+        self.cases_db = None
+        self.law_to_dispute = None
 
-        # Initialize graph database
-        if self.config.graph.graph_db_path and os.path.exists(self.config.graph.graph_db_path):
-            GraphDBManager.load(self.config.graph.graph_db_path)
-            logger.info(f"Graph database loaded from {self.config.graph.graph_db_path}")
+        # Initialize graph database connection (Neo4j)
+        from core.graph_construct.neo4j_manager import neo4j_manager
+
+        if not neo4j_manager.driver:
+            logger.warning("Neo4j driver is not initialized. Vector search may fail.")
         else:
-            GraphDBManager.initialize()
-            # If auto-build is enabled and graph_db_path is configured, auto-build the graph
-            if self.config.graph.auto_build and self.config.graph.graph_db_path:
-                logger.info("Graph database not found. Auto-building graph...")
-                self.build_graph(force_rebuild=False)
-                # After graph construction, reload if graph database file was created
-                if os.path.exists(self.config.graph.graph_db_path):
-                    GraphDBManager.load(self.config.graph.graph_db_path)
-                    logger.info(
-                        f"Graph database loaded after construction from {self.config.graph.graph_db_path}"
-                    )
-            elif self.config.graph.graph_db_path:
-                logger.warning(
-                    f"Warning: Graph database not found at {self.config.graph.graph_db_path}"
-                )
-                logger.info("Set auto_build=True in config to automatically build the graph")
-            else:
-                logger.warning(
-                    "Warning: graph_db_path not configured. Graph will not be persisted."
-                )
+            logger.info("Using Neo4j for Graph RAG retrieval.")
 
     def _init_model(self) -> BaseModel:
         """Initialize model"""

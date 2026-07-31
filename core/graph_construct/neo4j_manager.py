@@ -22,11 +22,62 @@ class Neo4jManager:
         if self.driver:
             self.driver.close()
 
-    def sync_from_memory_graph(self, memory_db):
+    def setup_indexes(self, embedding_dim=1536):
+        """Create Vector and Fulltext indexes in Neo4j"""
+        if not self.driver:
+            return
+        logger.info("Setting up Neo4j indexes...")
+        with self.driver.session() as session:
+            # 1. Vector Indexes
+            try:
+                session.run(
+                    f"CREATE VECTOR INDEX case_embeddings IF NOT EXISTS FOR (c:Cases) ON (c.embedding) OPTIONS {{indexConfig: {{`vector.dimensions`: {embedding_dim}, `vector.similarity_function`: 'cosine'}}}}"
+                )
+                logger.info("Vector index for Cases created.")
+            except Exception as e:
+                logger.warning(f"Could not create vector index for Cases: {e}")
+
+            try:
+                session.run(
+                    f"CREATE VECTOR INDEX law_embeddings IF NOT EXISTS FOR (l:Laws) ON (l.embedding) OPTIONS {{indexConfig: {{`vector.dimensions`: {embedding_dim}, `vector.similarity_function`: 'cosine'}}}}"
+                )
+                logger.info("Vector index for Laws created.")
+            except Exception as e:
+                logger.warning(f"Could not create vector index for Laws: {e}")
+
+            # 2. Fulltext Indexes (BM25 replacement)
+            try:
+                session.run(
+                    "CREATE FULLTEXT INDEX case_fulltext IF NOT EXISTS FOR (n:Cases) ON EACH [n.description]"
+                )
+                logger.info("Fulltext index for Cases created.")
+            except Exception as e:
+                logger.warning(f"Could not create fulltext index for Cases: {e}")
+
+            try:
+                session.run(
+                    "CREATE FULLTEXT INDEX law_fulltext IF NOT EXISTS FOR (n:Laws) ON EACH [n.description, n.entry]"
+                )
+                logger.info("Fulltext index for Laws created.")
+            except Exception as e:
+                logger.warning(f"Could not create fulltext index for Laws: {e}")
+
+    def sync_from_memory_graph(self, memory_db, embedding_dim=None):
         """Sync nodes and edges from InMemoryGraphDB to Neo4j"""
         if not self.driver:
             logger.error("Neo4j driver not initialized. Skipping sync.")
             return
+
+        # Infer embedding dim if not provided
+        if not embedding_dim:
+            for node_info in memory_db.nodes_data.values():
+                emb = node_info.get("data", {}).get("embedding")
+                if emb and isinstance(emb, list):
+                    embedding_dim = len(emb)
+                    logger.info(f"Inferred embedding dimension: {embedding_dim}")
+                    break
+            if not embedding_dim:
+                embedding_dim = 1536  # Default fallback
 
         logger.info("Syncing graph data to Neo4j...")
         with self.driver.session() as session:
@@ -39,11 +90,17 @@ class Neo4jManager:
                 node_type = node_info["type"]
                 props = node_info["data"]
 
-                safe_props = {
-                    k: v
-                    for k, v in props.items()
-                    if k != "embedding" and isinstance(v, (str, int, float, bool))
-                }
+                safe_props = {}
+                for k, v in props.items():
+                    if isinstance(v, (str, int, float, bool)):
+                        safe_props[k] = v
+                    elif isinstance(v, list):
+                        # Allow embeddings or arrays of primitives
+                        if k == "embedding" and len(v) == embedding_dim:
+                            safe_props[k] = v
+                        elif all(isinstance(x, (str, int, float, bool)) for x in v):
+                            safe_props[k] = v
+
                 # Thêm ID trực tiếp vào thuộc tính để sử dụng trong UNWIND
                 safe_props["id"] = str(node_id)
 
@@ -53,7 +110,7 @@ class Neo4jManager:
 
             # Bulk insert nodes by type using UNWIND
             for node_type, nodes_list in nodes_by_type.items():
-                batch_size = 2000
+                batch_size = 500  # Reduced batch size for large embeddings
                 for i in range(0, len(nodes_list), batch_size):
                     batch = nodes_list[i : i + batch_size]
                     query = f"""
@@ -109,6 +166,8 @@ class Neo4jManager:
                     """
                     session.run(query, batch=batch)
 
+        # Setup indexes after syncing
+        self.setup_indexes(embedding_dim=embedding_dim)
         logger.info("Successfully synced graph to Neo4j.")
 
 
