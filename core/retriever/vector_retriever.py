@@ -103,8 +103,8 @@ class VectorRetriever(BaseRetriever):
         # Reconstruct full law node data
         for entry_id in retrieved_law_entries:
             try:
-                if int(entry_id) < 102:  # Filtering out generic laws if needed
-                    pass
+                if int(entry_id) < 102:  # Filter out generic law provisions (introductory articles)
+                    continue
             except ValueError:
                 pass
 

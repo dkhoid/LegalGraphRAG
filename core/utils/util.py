@@ -158,6 +158,9 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
     else:
         retriever = GraphRetriever(chatbot)
 
+    # Cap on how many laws to evaluate in judge_law (prevents unbounded API calls)
+    max_judge_laws = retrieve_config.get("max_judge_laws", 8)
+
     case_by_defendant = segment_case_text_withname(chatbot, case["fact"][:1024], case["name"])
     for item in case_by_defendant:
         item["feature"] = get_features(chatbot, item)
@@ -166,8 +169,12 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
         )
         if not (retrieved_laws and retrieved_facts):
             continue
+
+        # Limit laws sent to judge_law to control API costs
+        laws_to_judge = retrieved_laws[:max_judge_laws]
+
         law_used = []
-        for law in retrieved_laws:
+        for law in laws_to_judge:
             used, _ = judge_law(
                 chatbot, f"Party: {item['name']}, Description: {item['description']}", law
             )

@@ -234,6 +234,27 @@ def build_relationships():
     """
     db = GraphDBManager.get_db()
 
+    # Remove Law nodes with entry <= 101 (general law provisions not relevant to cases) BEFORE building relationships
+    nodes_to_delete = []
+    for node_id, node_info in db.nodes_data.items():
+        if node_info["type"] == "Laws":
+            entry = node_info["data"].get("entry")
+            if entry is not None and str(entry).isdigit() and int(entry) <= 101:
+                nodes_to_delete.append(node_id)
+
+    if nodes_to_delete:
+        print(
+            f"Removing {len(nodes_to_delete)} Law nodes with entry <= 101 and their relationships"
+        )
+        for node_id in nodes_to_delete:
+            db.graph.remove_node(node_id)
+            del db.nodes_data[node_id]
+            # Remove from embeddings index
+            for node_type in db.embeddings:
+                if node_id in db.embeddings[node_type]:
+                    del db.embeddings[node_type][node_id]
+        print(f"Successfully removed {len(nodes_to_delete)} Law nodes.")
+
     # Create Case-to-Law relationships (based on entry matching)
     case_nodes = db.get_nodes_by_type("Cases")
 
@@ -253,11 +274,65 @@ def build_relationships():
             continue
 
         for law_entry in law_entries:
-            law_entry_str = str(law_entry)
+            law_entry_str = str(law_entry).strip()
+            if not law_entry_str:
+                continue
+
             if law_entry_str in law_nodes_by_entry:
                 db.add_edge(case_id, law_nodes_by_entry[law_entry_str], "RELATES_TO_LAW")
             else:
-                print(f"Warning: Law node not found, entry={law_entry}")
+                # Fuzzy match: Gather all candidates instead of picking the first one randomly
+                candidates = []
+                for graph_law_entry, law_node_id in law_nodes_by_entry.items():
+                    if (
+                        graph_law_entry.endswith(f"+{law_entry_str}")
+                        or graph_law_entry == law_entry_str
+                    ):
+                        candidates.append(law_node_id)
+
+                if not candidates:
+                    # Fallback fuzzy match
+                    for graph_law_entry, law_node_id in law_nodes_by_entry.items():
+                        if (
+                            f"{law_entry_str}" in graph_law_entry.split("+")[-1:]
+                            or f"_{law_entry_str}" in graph_law_entry
+                        ):
+                            candidates.append(law_node_id)
+
+                if candidates:
+                    case_emb = case_node.get("embedding")
+                    case_disputes = case_node.get("dispute", [])
+                    if isinstance(case_disputes, str):
+                        case_disputes = [case_disputes]
+
+                    best_law = None
+                    best_score = -1
+
+                    for law_node_id in candidates:
+                        law_data = db.nodes_data[law_node_id]["data"]
+                        law_emb = law_data.get("embedding")
+                        law_disputes = law_data.get("disputes", [])
+                        if isinstance(law_disputes, str):
+                            law_disputes = [law_disputes]
+
+                        score = 0.0
+                        if case_emb is not None and law_emb is not None:
+                            import numpy as np
+
+                            v1, v2 = np.array(case_emb), np.array(law_emb)
+                            norm = np.linalg.norm(v1) * np.linalg.norm(v2)
+                            score = float(np.dot(v1, v2) / norm) if norm > 0 else 0.0
+
+                        # Massive boost if they share the same dispute category
+                        if set(case_disputes).intersection(set(law_disputes)):
+                            score += 1.0
+
+                        if score > best_score:
+                            best_score = score
+                            best_law = law_node_id
+
+                    if best_law:
+                        db.add_edge(case_id, best_law, "RELATES_TO_LAW")
 
     # Create Law-to-Issue relationships (based on issue description matching)
     law_nodes = db.get_nodes_by_type("Laws")

@@ -413,34 +413,24 @@ class LegalGraphRAG:
 
         # Process case nodes
         for case in tqdm(self.cases_db, desc="Preparing case nodes"):
-            # Check if features field exists (new format) or use fact directly (old format)
-            if "features" in case:
-                features = case["features"]
-                # Check if dispute_acts field exists
-                if features.get("dispute_acts") and len(features.get("dispute_acts", [])) > 0:
-                    description = self._concat_feature_descriptions(features)
-                    case_nodes_data.append(
-                        {
-                            "id": str(uuid.uuid4()),
-                            "description": description,
-                            "caseId": case.get("id", ""),
-                            "dispute": case.get("dispute", []),
-                            "law": case.get("law", []),
-                            "type": "case",
-                        }
-                    )
-            elif "fact" in case:
-                # Old format: use fact directly as description
-                case_nodes_data.append(
-                    {
-                        "id": str(uuid.uuid4()),
-                        "description": case.get("fact", ""),
-                        "caseId": case.get("id", ""),
-                        "dispute": case.get("dispute", []),
-                        "law": case.get("laws", case.get("law", [])),
-                        "type": "case",
-                    }
-                )
+            # Use 'fact' as the primary description to ensure distinct embeddings
+            description = case.get("fact", "")
+            if not description and "features" in case:
+                description = self._concat_feature_descriptions(case["features"])
+
+            # Normalize law field
+            laws = case.get("law", case.get("laws", []))
+
+            case_nodes_data.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "description": description,
+                    "caseId": case.get("id", ""),
+                    "dispute": case.get("dispute", []),
+                    "law": laws,
+                    "type": "case",
+                }
+            )
 
         # Process law nodes and crime nodes
         crimes = set()

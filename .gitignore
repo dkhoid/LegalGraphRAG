@@ -115,3 +115,4 @@ yarn-error.log*
 .agent/
 .gemini/
 2605.28120v1.pdf
+docs/
