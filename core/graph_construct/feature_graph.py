@@ -770,25 +770,33 @@ def query_similar_nodes_naive(model, query_text, top_k=3):
     if query_embedding is None:
         return []
 
-    db = GraphDBManager.get_db()
-    neighbor_results = db.find_similar_nodes(query_embedding, "Cases", top_k=top_k)
+    from core.graph_construct.neo4j_manager import neo4j_manager
 
-    if not neighbor_results:
+    if not neo4j_manager.driver:
         return []
 
     neighbors = []
-    for record in neighbor_results:
-        neighbors.append(
-            {
-                "id": record["id"],
-                "description": record.get("description", ""),
-                "caseId": record.get("caseId", ""),
-                "similarity": record["similarity"],
-            }
-        )
-    neighbors = sorted(neighbors, key=lambda x: x["similarity"], reverse=True)
-    for ids, neighbor in enumerate(neighbors):
-        neighbor["rank"] = ids + 1
+    with neo4j_manager.driver.session() as session:
+        vector_query = """
+        CALL db.index.vector.queryNodes('case_embeddings', $top_k, $query_embedding)
+        YIELD node AS case, score
+        RETURN case, score
+        """
+        try:
+            results = session.run(vector_query, top_k=top_k, query_embedding=query_embedding)
+            for i, record in enumerate(results):
+                c = record["case"]
+                neighbors.append(
+                    {
+                        "id": c.get("id"),
+                        "description": c.get("description", ""),
+                        "caseId": c.get("caseId", ""),
+                        "similarity": record["score"],
+                        "rank": i + 1,
+                    }
+                )
+        except Exception as e:
+            print(f"Neo4j case search error: {e}")
 
     return neighbors
 
@@ -938,29 +946,43 @@ def query_similar_laws_naive(query_text, top_k=1):
     if query_embedding is None:
         return []
 
-    db = GraphDBManager.get_db()
-    law_results = db.find_similar_nodes(query_embedding, "Laws", top_k=top_k)
+    from core.graph_construct.neo4j_manager import neo4j_manager
+
+    if not neo4j_manager.driver:
+        return []
 
     result_laws = []
-    seen_law_ids = set()  # For deduplication of law nodes
+    seen_law_ids = set()
 
-    for law_record in law_results:
-        if law_record["similarity"] < 0.55:
-            continue
-        entry = law_record.get("entry")
-        if entry is not None and entry not in seen_law_ids:
-            result_laws.append(
-                {
-                    "id": law_record.get("id"),
-                    "entry": entry,
-                    "description": law_record.get("description", ""),
-                    "disputes": law_record.get("disputes", []),
-                    "judge_dep": law_record.get("judge_dep", []),
-                    "related_laws": law_record.get("related_laws", []),
-                    "similarity": law_record["similarity"],
-                }
-            )
-            seen_law_ids.add(entry)
+    with neo4j_manager.driver.session() as session:
+        vector_query = """
+        CALL db.index.vector.queryNodes('law_embeddings', $top_k, $query_embedding)
+        YIELD node AS law, score
+        RETURN law, score
+        """
+        try:
+            results = session.run(vector_query, top_k=top_k, query_embedding=query_embedding)
+            for record in results:
+                score = record["score"]
+                if score < 0.55:
+                    continue
+                law = record["law"]
+                entry = law.get("entry")
+                if entry is not None and entry not in seen_law_ids:
+                    seen_law_ids.add(entry)
+                    result_laws.append(
+                        {
+                            "id": law.get("id"),
+                            "entry": entry,
+                            "description": law.get("description", ""),
+                            "disputes": law.get("disputes", []),
+                            "judge_dep": law.get("judge_dep", []),
+                            "related_laws": law.get("related_laws", []),
+                            "similarity": score,
+                        }
+                    )
+        except Exception as e:
+            print(f"Neo4j law search error: {e}")
 
     return result_laws
 

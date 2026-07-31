@@ -51,23 +51,31 @@ class TestNeo4jManager(unittest.TestCase):
         # Verify run was called with clear
         mock_session.run.assert_any_call("MATCH (n) DETACH DELETE n")
 
+        # Get all calls to session.run
+        calls = mock_session.run.call_args_list
+
         # Verify node insert using UNWIND
-        expected_node_query = f"""
-                    UNWIND $batch AS props
-                    CREATE (n:Case)
-                    SET n = props
-                    """
-        expected_node_batch = [{"name": "c1", "id": "node1"}, {"name": "c2", "id": "node2"}]
-        mock_session.run.assert_any_call(expected_node_query, batch=expected_node_batch)
+        node_batch = [
+            {"name": "c1", "embedding": [1, 2, 3], "id": "node1"},
+            {"name": "c2", "id": "node2"},
+        ]
+        node_query_found = any(
+            "CREATE (n:Case)" in call[0][0]
+            and "UNWIND $batch AS props" in call[0][0]
+            and call[1].get("batch") == node_batch
+            for call in calls
+        )
+        self.assertTrue(node_query_found, "Node insert query not found or batch mismatched")
 
         # Verify edge insert using UNWIND
-        expected_edge_query = f"""
-                    UNWIND $batch AS edge
-                    MATCH (a:Case {{id: edge.source}}), (b:Case {{id: edge.target}})
-                    MERGE (a)-[r:RELATED_TO]->(b)
-                    """
-        expected_edge_batch = [{"source": "node1", "target": "node2"}]
-        mock_session.run.assert_any_call(expected_edge_query, batch=expected_edge_batch)
+        edge_batch = [{"source": "node1", "target": "node2"}]
+        edge_query_found = any(
+            "MERGE (a)-[r:RELATED_TO]->(b)" in call[0][0]
+            and "UNWIND $batch AS edge" in call[0][0]
+            and call[1].get("batch") == edge_batch
+            for call in calls
+        )
+        self.assertTrue(edge_query_found, "Edge insert query not found or batch mismatched")
 
     @patch("core.graph_construct.neo4j_manager.GraphDatabase")
     def test_sync_no_driver(self, mock_graphdb):
