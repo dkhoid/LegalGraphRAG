@@ -1,0 +1,68 @@
+# Version control
+.git
+.github
+.gitignore
+
+# Environment variables (CRITICAL SECURITY)
+.env
+.env.*
+*.local
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+.conda/
+
+# IDEs & Editors
+.vscode/
+.idea/
+.history/
+*.swp
+*.swo
+*~
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Data and heavy files (Avoid bloating Docker image)
+data/
+*.pkl
+*.pickle
+outputs/
+logs/
+*.log
+docs/
+*.pdf
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Agents
+.agent/
+.gemini/
+
+# Others
+tests/
+Dockerfile
+docker-compose.yml

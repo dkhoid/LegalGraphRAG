@@ -4,6 +4,10 @@ import os
 # Thêm thư mục gốc của project vào sys.path để import được core
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from core.graph_construct.graph_db import InMemoryGraphDB
 from core.graph_construct.neo4j_manager import neo4j_manager
 
