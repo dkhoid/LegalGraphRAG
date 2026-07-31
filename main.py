@@ -93,11 +93,13 @@ class CaseRequest(BaseModel):
     fact: str = Field(..., max_length=5000, description="Tình tiết vụ án cần phân tích")
     top_k: int = Field(5, ge=1, le=10, description="Số lượng kết quả liên quan tối đa")
     api_key: str | None = Field(None, description="API Key tùy chọn cho request hiện tại")
+    provider: str | None = Field(None, description="Provider tùy chọn (openai, gemini, deepseek)")
 
 
 class ChatRequest(BaseModel):
     query: str = Field(..., max_length=5000, description="Câu hỏi pháp lý")
     api_key: str | None = Field(None, description="API Key tùy chọn cho request hiện tại")
+    provider: str | None = Field(None, description="Provider tùy chọn (openai, gemini, deepseek)")
 
 
 class APIKeyRequest(BaseModel):
@@ -216,6 +218,20 @@ async def analyze_civil(request: CaseRequest):
         raise HTTPException(
             status_code=500, detail="RAG system is not initialized. Please check startup logs."
         )
+
+    from core.utils.context import request_api_key, request_base_url, request_model_name
+
+    request_api_key.set(request.api_key)
+    if request.provider == "gemini":
+        request_base_url.set("https://generativelanguage.googleapis.com/v1beta/openai/")
+        request_model_name.set("gemini-1.5-flash")
+    elif request.provider == "deepseek":
+        request_base_url.set("https://api.deepseek.com/v1")
+        request_model_name.set("deepseek-chat")
+    elif request.provider == "openai":
+        request_base_url.set("https://api.openai.com/v1")
+        request_model_name.set("gpt-4o-mini")
+
     try:
         prompt_response = await generate_prompt(request)
 
@@ -263,6 +279,19 @@ async def analyze_civil(request: CaseRequest):
 async def chat(request: ChatRequest):
     if not rag_system:
         raise HTTPException(status_code=500, detail="RAG system is not initialized.")
+
+    from core.utils.context import request_api_key, request_base_url, request_model_name
+
+    request_api_key.set(request.api_key)
+    if request.provider == "gemini":
+        request_base_url.set("https://generativelanguage.googleapis.com/v1beta/openai/")
+        request_model_name.set("gemini-1.5-flash")
+    elif request.provider == "deepseek":
+        request_base_url.set("https://api.deepseek.com/v1")
+        request_model_name.set("deepseek-chat")
+    elif request.provider == "openai":
+        request_base_url.set("https://api.openai.com/v1")
+        request_model_name.set("gpt-4o-mini")
 
     case_input = {"fact": request.query, "name": ["Nguyên đơn", "Bị đơn"]}
     try:

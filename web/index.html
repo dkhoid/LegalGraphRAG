@@ -32,8 +32,16 @@
                         <label for="topK">Số lượng tham khảo (Top K):</label>
                         <input type="number" id="topK" value="5" min="1" max="10">
                     </div>
+                    <div class="setting-group" style="margin-bottom: 15px;">
+                        <label for="provider">Chọn Hãng AI (Provider):</label>
+                        <select id="provider" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); margin-top: 5px;">
+                            <option value="openai">OpenAI (GPT-4o, GPT-3.5)</option>
+                            <option value="gemini">Google Gemini (Miễn phí)</option>
+                            <option value="deepseek">DeepSeek (Giá rẻ)</option>
+                        </select>
+                    </div>
                     <div class="setting-group">
-                        <label for="apiKey">OpenAI API Key (Cập nhật server):</label>
+                        <label for="apiKey">API Key (Tương ứng với hãng AI):</label>
                         <div style="display: flex; gap: 8px; margin-top: 5px;">
                             <input type="password" id="apiKey" placeholder="sk-..." style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
                             <button id="updateKeyBtn" class="secondary-btn" style="padding: 10px 16px; border-radius: 6px; cursor: pointer;">Cập nhật</button>

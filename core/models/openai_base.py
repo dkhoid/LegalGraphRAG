@@ -65,13 +65,25 @@ class OpenAIBaseModel(BaseModel):
         Returns:
             Model generated response text
         """
+        from core.utils.context import request_api_key, request_base_url, request_model_name
+
+        ctx_api_key = request_api_key.get()
+        ctx_base_url = request_base_url.get()
+        ctx_model_name = request_model_name.get()
+
         client = self.client
-        if api_key:
-            client = OpenAI(api_key=api_key, base_url=self.base_url, timeout=30.0, max_retries=0)
+        effective_base_url = ctx_base_url or self.base_url
+        effective_api_key = ctx_api_key or api_key or self.api_key
+        effective_model = ctx_model_name or self.model_name
+
+        if ctx_api_key or api_key or ctx_base_url:
+            client = OpenAI(
+                api_key=effective_api_key, base_url=effective_base_url, timeout=30.0, max_retries=0
+            )
 
         try:
             response = client.chat.completions.create(
-                model=self.model_name,
+                model=effective_model,
                 messages=[{"role": "user", "content": user_input}],
                 max_tokens=max_length,
                 temperature=temperature,

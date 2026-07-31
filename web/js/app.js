@@ -18,12 +18,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // API Key DOM
     const updateKeyBtn = document.getElementById('updateKeyBtn');
     const apiKeyInput = document.getElementById('apiKey');
+    const providerSelect = document.getElementById('provider');
 
     if (updateKeyBtn) {
         // Khôi phục key từ localStorage
         const savedKey = localStorage.getItem('openai_api_key');
+        const savedProvider = localStorage.getItem('ai_provider');
+
         if (savedKey) {
             apiKeyInput.value = savedKey;
+        }
+        if (savedProvider && providerSelect) {
+            providerSelect.value = savedProvider;
         }
 
         updateKeyBtn.addEventListener('click', async () => {
@@ -37,9 +43,12 @@ document.addEventListener('DOMContentLoaded', () => {
             updateKeyBtn.textContent = "Đang lưu...";
 
             try {
-                // Lưu key vào localStorage thay vì gửi lên server
+                // Lưu key và provider vào localStorage thay vì gửi lên server
                 localStorage.setItem('openai_api_key', newKey);
-                alert("Đã lưu API Key vào trình duyệt (localStorage).");
+                if (providerSelect) {
+                    localStorage.setItem('ai_provider', providerSelect.value);
+                }
+                alert("Đã lưu cấu hình AI vào trình duyệt (localStorage).");
             } catch (err) {
                 alert("Lỗi lưu Key: " + err.message);
             } finally {
@@ -73,8 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingState.classList.remove('hidden');
 
         try {
-            // Lấy API key từ input hoặc localStorage
+            // Lấy API key và provider từ input hoặc localStorage
             const apiKey = apiKeyInput.value.trim() || localStorage.getItem('openai_api_key');
+            const provider = (providerSelect ? providerSelect.value : null) || localStorage.getItem('ai_provider') || 'openai';
 
             // Gọi API
             const response = await fetch('/analyze_civil', {
@@ -85,7 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({
                     fact: fact,
                     top_k: topK,
-                    api_key: apiKey || null
+                    api_key: apiKey || null,
+                    provider: provider
                 })
             });
 
