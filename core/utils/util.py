@@ -100,13 +100,13 @@ def retrieve(chatbot, cases, law_to_dispute, cases_db, retrieve_config):
 def naive_retrieve(chatbot, cases, law_to_dispute, cases_db):
     features = cases["feature"]
     retrieved_facts = query_similar_nodes_naive(
-        chatbot, concat_feature_descriptions(features), top_k=5
+        chatbot, concat_feature_descriptions(features), top_k=7
     )
 
     if not retrieved_facts:
         return None, None
 
-    retrieved_laws = query_similar_laws_naive(concat_feature_descriptions(features), top_k=5)
+    retrieved_laws = query_similar_laws_naive(concat_feature_descriptions(features), top_k=7)
     retrieved_laws = [str(law["entry"]) for law in retrieved_laws]
     for item in retrieved_facts:
         for case in cases_db:

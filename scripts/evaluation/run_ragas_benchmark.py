@@ -16,7 +16,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy
+
+try:
+    from ragas.metrics import Faithfulness, AnswerRelevancy
+except ImportError:
+    pass
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -94,6 +98,14 @@ def main():
     rag = LegalGraphRAG(config)
 
     cases_db = rag.cases_db
+    if not cases_db:
+        logger.warning("cases_db in rag is None, manually loading...")
+        try:
+            cases_db = rag._load_cases_db()
+            rag.cases_db = cases_db
+        except Exception as e:
+            logger.error(f"Failed to load cases_db: {e}")
+            return
     valid_cases = [c for c in cases_db if c.get("law")]
 
     num_samples = 2
@@ -122,7 +134,16 @@ def main():
 
     # Some APIs might fail with embeddings if it's not actually OpenAI, but we'll let Ragas try.
     # If the user is using DeepSeek or a local LLM, Answer Relevancy might fail because it requires embeddings.
-    metrics = [faithfulness, answer_relevancy]
+    try:
+        metrics = [Faithfulness(), AnswerRelevancy()]
+    except Exception:
+        # Fallback for older versions
+        try:
+            from ragas.metrics import faithfulness, answer_relevancy
+
+            metrics = [faithfulness, answer_relevancy]
+        except ImportError:
+            pass
 
     try:
         logger.info("Evaluating Vector RAG...")

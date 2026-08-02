@@ -6,13 +6,23 @@ def judge_law(chatbot, case_description, law):
         judge_res = chatbot.generate_response(
             get_prompt("JUDGE_LAW_PROMPT1").format(law=law, case=case_description), max_length=128
         )
-        if "true" in judge_res.lower():
+        decision = judge_res.strip().split("\n")[-1].lower()
+        if "true" in decision:
             return True, ""
         else:
             return False, ""
     true_list = []
     false_list = []
-    for judge in law["judge_dep"]:
+    import ast
+
+    judge_deps = law.get("judge_dep", [])
+    if isinstance(judge_deps, str):
+        try:
+            judge_deps = ast.literal_eval(judge_deps)
+        except (ValueError, SyntaxError):
+            judge_deps = []
+
+    for judge in judge_deps:
         judge_res = chatbot.generate_response(
             get_prompt("JUDGE_LAW_PROMPT").format(
                 law_item=law["description"].replace("\n", ""),
@@ -22,9 +32,10 @@ def judge_law(chatbot, case_description, law):
             ),
             max_length=128,
         )
-        if "true" in judge_res.lower():
+        decision = judge_res.strip().split("\n")[-1].lower()
+        if "true" in decision:
             true_list.append(judge)
-        elif "false" in judge_res.lower():
+        elif "false" in decision:
             false_list.append(judge)
 
     res = chatbot.generate_response(
@@ -36,6 +47,7 @@ def judge_law(chatbot, case_description, law):
         ),
         max_length=1024,
     )
-    if "true" in res.lower():
+    decision = res.strip().split("\n")[-1].lower()
+    if "true" in decision:
         return True, res
     return False, res

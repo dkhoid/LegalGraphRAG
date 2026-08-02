@@ -61,7 +61,7 @@ class VectorRetriever(BaseRetriever):
         query_text = concat_feature_descriptions(features)
 
         # Determine top_k from config or use default 5
-        top_k = 5
+        top_k = 7
         if retrieve_config and "direct_retrieve_top_k" in retrieve_config:
             top_k = retrieve_config["direct_retrieve_top_k"]
 

@@ -1,6 +1,17 @@
 import logging
 import sys
 import os
+import warnings
+
+# Suppress Neo4j deprecation warnings
+try:
+    from neo4j.exceptions import Neo4jDeprecationWarning
+
+    warnings.filterwarnings("ignore", category=Neo4jDeprecationWarning)
+except ImportError:
+    pass
+logging.getLogger("neo4j").setLevel(logging.ERROR)
+logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
 
 
 def setup_logger(name="LegalGraphRAG", log_file="logs/app.log", level=logging.INFO):

@@ -833,7 +833,7 @@ def query_similar_nodes(model, query_text, retrieve_config):
         try:
             tokenized_query = query_text.lower().split()
             bm25_scores = bm25.get_scores(tokenized_query)
-            top_k_bm25 = 3
+            top_k_bm25 = 5
             top_indices = sorted(
                 range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
             )[:top_k_bm25]

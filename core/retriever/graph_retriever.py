@@ -56,9 +56,9 @@ class GraphRetriever(BaseRetriever):
             # Default fallback config if none provided
             retrieve_config = {
                 "top_retrieve": True,
-                "top_retrieve_top_k": 3,
+                "top_retrieve_top_k": 5,
                 "direct_retrieve": True,
-                "direct_retrieve_top_k": 3,
+                "direct_retrieve_top_k": 5,
                 "augment_retrieve": False,
             }
 
@@ -87,7 +87,7 @@ class GraphRetriever(BaseRetriever):
         with neo4j_manager.driver.session() as session:
             # 1. Vector Search for Cases
             if query_embedding and retrieve_config.get("top_retrieve", True):
-                top_k = retrieve_config.get("top_retrieve_top_k", 3)
+                top_k = retrieve_config.get("top_retrieve_top_k", 5)
                 vector_query = """
                 CALL db.index.vector.queryNodes('case_embeddings', $top_k, $query_embedding)
                 YIELD node AS case, score
@@ -133,7 +133,7 @@ class GraphRetriever(BaseRetriever):
                     lucene_query = " OR ".join(
                         [f"*{w}*" for w in words[:10]]
                     )  # limit to first 10 words to avoid parsing errors
-                    top_k_bm25 = retrieve_config.get("direct_retrieve_top_k", 3)
+                    top_k_bm25 = retrieve_config.get("direct_retrieve_top_k", 5)
                     text_query = """
                     CALL db.index.fulltext.queryNodes('case_fulltext', $lucene_query, {limit: $top_k})
                     YIELD node AS case, score

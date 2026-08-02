@@ -71,8 +71,8 @@ class RetrieveConfig:
     top_retrieve: bool = True
     direct_retrieve: bool = True
     augment_retrieve: bool = True
-    top_retrieve_top_k: int = 3
-    direct_retrieve_top_k: int = 3
+    top_retrieve_top_k: int = 5
+    direct_retrieve_top_k: int = 5
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format"""
@@ -146,8 +146,8 @@ class LegalGraphRAGConfig:
             top_retrieve=os.getenv("top_retrieve", "True") == "True",
             direct_retrieve=os.getenv("direct_retrieve", "True") == "True",
             augment_retrieve=os.getenv("augment_retrieve", "True") == "True",
-            top_retrieve_top_k=int(os.getenv("top_retrieve_top_k", 3)),
-            direct_retrieve_top_k=int(os.getenv("direct_retrieve_top_k", 3)),
+            top_retrieve_top_k=int(os.getenv("top_retrieve_top_k", 5)),
+            direct_retrieve_top_k=int(os.getenv("direct_retrieve_top_k", 5)),
         )
 
         # Graph configuration
