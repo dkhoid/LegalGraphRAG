@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-config = LegalGraphRAGConfig()
+config = LegalGraphRAGConfig.from_env_file(".env")
 rag = LegalGraphRAG(config)
 
 cases_db = rag._load_cases_db()

@@ -5,7 +5,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv()
 from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
 
-config = LegalGraphRAGConfig()
+config = LegalGraphRAGConfig.from_env_file(".env")
 config.model.model_name = "gpt4o_mini"
 config.model.device = "cpu"
 rag = LegalGraphRAG(config)

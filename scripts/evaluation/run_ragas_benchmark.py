@@ -153,6 +153,8 @@ def main():
         )
         print("\n=== VECTOR RAGAS RESULT ===")
         print(vector_result)
+        vector_result.to_pandas().to_csv("outputs/vector_ragas_detailed.csv", index=False)
+        logger.info("Saved detailed Vector RAG results to outputs/vector_ragas_detailed.csv")
     except Exception as e:
         logger.error(f"Vector Ragas Error: {e}")
 
@@ -164,6 +166,8 @@ def main():
         )
         print("\n=== GRAPH RAGAS RESULT ===")
         print(graph_result)
+        graph_result.to_pandas().to_csv("outputs/graph_ragas_detailed.csv", index=False)
+        logger.info("Saved detailed Graph RAG results to outputs/graph_ragas_detailed.csv")
     except Exception as e:
         logger.error(f"Graph Ragas Error: {e}")
 
