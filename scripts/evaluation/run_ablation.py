@@ -16,9 +16,66 @@ from dotenv import load_dotenv
 
 load_dotenv(".env")
 
+# Add project root to sys.path to allow importing 'core' when running as script
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
 from core.utils.logger import logger
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Caching to save token costs during ablation
+# ─────────────────────────────────────────────────────────────────────────────
+import copy
+import core.utils.util as util_module
+from core.preprocess.case_seg import segment_case_text_withname as orig_segment
+from core.preprocess.get_features import get_features as orig_get_features
+from core.judge.judge_law import judge_law as orig_judge_law
+from core.judge.judge_civil import judge_civil_all as orig_judge_civil
+
+segment_cache = {}
+features_cache = {}
+judge_law_cache = {}
+judge_civil_cache = {}
+
+
+def cached_segment(chatbot, text, name):
+    cache_key = f"{name}___{text}"
+    if cache_key not in segment_cache:
+        segment_cache[cache_key] = orig_segment(chatbot, text, name)
+    return copy.deepcopy(segment_cache[cache_key])
+
+
+def cached_get_features(chatbot, item):
+    cache_key = f"{item.get('name')}___{item.get('description')}"
+    if cache_key not in features_cache:
+        features_cache[cache_key] = orig_get_features(chatbot, item)
+    return copy.deepcopy(features_cache[cache_key])
+
+
+def cached_judge_law(chatbot, text, law):
+    cache_key = f"{text}___law_{law.get('id')}"
+    if cache_key not in judge_law_cache:
+        judge_law_cache[cache_key] = orig_judge_law(chatbot, text, law)
+    return copy.deepcopy(judge_law_cache[cache_key])
+
+
+def cached_judge_civil_all(chatbot, law_used, fact_used, text):
+    law_ids = "_".join(str(l.get("id")) for l in law_used)
+    fact_ids = "_".join(str(f.get("caseId")) for f in fact_used)
+    cache_key = f"{text}___laws_{law_ids}___facts_{fact_ids}"
+    if cache_key not in judge_civil_cache:
+        judge_civil_cache[cache_key] = orig_judge_civil(chatbot, law_used, fact_used, text)
+    return copy.deepcopy(judge_civil_cache[cache_key])
+
+
+# Monkey patch core module so analyze_case uses our cached versions
+util_module.segment_case_text_withname = cached_segment
+util_module.get_features = cached_get_features
+util_module.judge_law = cached_judge_law
+util_module.judge_civil_all = cached_judge_civil_all
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Metric helpers
@@ -79,6 +136,30 @@ def dispute_hit(pred_disputes: List[str], true_disputes: List[str]) -> bool:
         "cạnh tranh": ["không cạnh tranh", "bảo mật"],
     }
 
+    stop_words = {
+        "do",
+        "về",
+        "và",
+        "không",
+        "các",
+        "nhà",
+        "người",
+        "tranh",
+        "chấp",
+        "lao",
+        "động",
+        "vi",
+        "phạm",
+        "hợp",
+        "đồng",
+        "quyền",
+        "lợi",
+        "nghĩa",
+        "vụ",
+        "sự",
+        "việc",
+    }
+
     for pd in pred_disputes:
         pd_norm = normalize(pd)
         if not pd_norm:
@@ -104,14 +185,13 @@ def dispute_hit(pred_disputes: List[str], true_disputes: List[str]) -> bool:
 
             # Token overlap
             overlap = pd_words & td_words
-            meaningful_overlap = [
-                w
-                for w in overlap
-                if len(w) > 1
-                and w not in {"do", "về", "và", "không", "các", "nhà", "người", "tranh", "chấp"}
-            ]
-            if len(meaningful_overlap) >= 1 or (
-                len(td_words) > 0 and len(overlap) / len(td_words) >= 0.3
+            meaningful_overlap = [w for w in overlap if len(w) > 1 and w not in stop_words]
+            meaningful_td_words = [w for w in td_words if len(w) > 1 and w not in stop_words]
+
+            # Require at least 2 meaningful overlapping words, OR at least 50% overlap of meaningful words
+            if len(meaningful_overlap) >= 2 or (
+                len(meaningful_td_words) > 0
+                and len(meaningful_overlap) / len(meaningful_td_words) >= 0.5
             ):
                 return True
 
@@ -267,14 +347,16 @@ def run_experiment(
     per_case_results = []
 
     start = time.time()
-    for case in test_cases:
+    for idx, case in enumerate(test_cases, 1):
         true_disputes = case.get("dispute", [])
         true_laws = [str(l) for l in case.get("laws", case.get("law", []))]
+
+        logger.info(f"  [{idx}/{len(test_cases)}] Bắt đầu xử lý Case: {case.get('id')}...")
 
         try:
             case_res = analyze_case(rag.model, case, rag.law_to_dispute, rag.cases_db, retrieve_cfg)
         except Exception as e:
-            logger.warning(f"Case {case.get('id')} failed: {e}")
+            logger.error(f"  [!] Case {case.get('id')} bị lỗi: {e}")
             per_case_results.append(
                 {
                     "id": case.get("id"),
@@ -311,7 +393,13 @@ def run_experiment(
                 "law_f1": round(f1, 4),
             }
         )
-        logger.info(f"  Case {case.get('id')}: dispute={'✅' if hit else '❌'} law_f1={f1:.2f}")
+        logger.info(f"    - True Disputes: {true_disputes}")
+        logger.info(f"    - Pred Disputes: {pred_disputes}")
+        logger.info(f"    - True Laws: {true_laws}")
+        logger.info(f"    - Pred Laws: {pred_laws}")
+        logger.info(
+            f"    -> Kết quả: Dispute={'✅' if hit else '❌'} | Precision={p:.2f} | Recall={r:.2f} | F1={f1:.2f}\n"
+        )
 
     elapsed = time.time() - start
     n = len(test_cases)
@@ -422,8 +510,8 @@ def main():
     rag = LegalGraphRAG(config=config)
     logger.info("RAG ready. Starting ablation experiments...\n")
 
-    # Run only Graph_Full for sample result
-    experiments_to_run = [e for e in EXPERIMENT_CONFIGS if e["name"] == "Graph_Full"]
+    # Run all experiments (Ablation configs)
+    experiments_to_run = EXPERIMENT_CONFIGS
     all_results = []
 
     for exp in experiments_to_run:

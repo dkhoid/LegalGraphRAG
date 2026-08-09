@@ -224,16 +224,27 @@ class InMemoryGraphDB:
         # Lưu vào file tạm để đảm bảo an toàn dữ liệu (Atomic Save)
         temp_filepath = f"{filepath}.tmp"
         try:
-            with open(temp_filepath, "wb") as f:
+            import builtins
+
+            _open = getattr(builtins, "open", open)
+            if _open is None:
+                return
+            with _open(temp_filepath, "wb") as f:
                 pickle.dump(data, f)
             # Dùng os.replace để ghi đè (atomic operation)
-            os.replace(temp_filepath, filepath)
-            print(f"Graph data saved to {filepath}")
+            if os and hasattr(os, "replace"):
+                os.replace(temp_filepath, filepath)
+                print(f"Graph data saved to {filepath}")
         except Exception as e:
-            if os.path.exists(temp_filepath):
-                os.remove(temp_filepath)
-            print(f"Error saving graph data: {e}")
-            raise e
+            if os and hasattr(os, "path") and os.path.exists(temp_filepath):
+                try:
+                    os.remove(temp_filepath)
+                except Exception:
+                    pass
+            import sys
+
+            if sys and getattr(sys, "meta_path", None) is not None:
+                print(f"Error saving graph data: {e}")
 
     def load(self, filepath: str):
         """Load graph data from file"""

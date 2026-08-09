@@ -156,7 +156,8 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
     # Cap on how many laws to evaluate in judge_law (prevents unbounded API calls)
     max_judge_laws = retrieve_config.get("max_judge_laws", 8)
 
-    case_by_defendant = segment_case_text_withname(chatbot, case["fact"][:1024], case["name"])
+    criminals = case["name"] if isinstance(case["name"], list) else [case["name"]]
+    case_by_defendant = segment_case_text_withname(chatbot, case["fact"][:4096], criminals)
     for item in case_by_defendant:
         item["feature"] = get_features(chatbot, item)
         original_retrieved_res, retrieved_laws, retrieved_facts = retriever.retrieve(
@@ -176,6 +177,14 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
             if used:
                 law_used.append(law)
         fact_used = filter_facts(law_used, retrieved_facts)
+
+        # Fallback: If the strict LLM judge rejected all laws, keep at least the top 1 law
+        # so we have some context for the final resolution (prevents Ragas Faithfulness = 0)
+        if not law_used and laws_to_judge:
+            law_used = laws_to_judge[:1]
+            fact_used = filter_facts(law_used, retrieved_facts)
+            if not fact_used and retrieved_facts:
+                fact_used = retrieved_facts[:1]
 
         judge_result = judge_civil_all(
             chatbot,

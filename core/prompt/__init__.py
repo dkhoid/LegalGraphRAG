@@ -45,6 +45,7 @@ _PROMPTS = {
     "GET_FEATURES_INPUT_TEMPLATE": "\nTên đương sự: {name}\nTình tiết vụ án: {fact}",
     "JUDGE_CIVIL_ALL_INPUT_TEMPLATE": (
         "Đầu vào:\nQuy định pháp luật:\n-----\n{law}\n-----\n"
+        "Các án lệ / Vụ án tương tự tham khảo:\n-----\n{facts}\n-----\n"
         "Vụ án cần xét xử:\n-----\n{case}\n-----\nĐầu ra:"
     ),
 }

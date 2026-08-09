@@ -14,9 +14,11 @@ class Neo4jManager:
 
         try:
             self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            self.driver.verify_connectivity()
             logger.info(f"Connected to Neo4j at {self.uri}")
         except Exception as e:
             logger.error(f"Failed to connect to Neo4j: {e}")
+            self.driver = None
 
     def close(self):
         if self.driver:

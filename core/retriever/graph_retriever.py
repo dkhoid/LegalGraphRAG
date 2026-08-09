@@ -81,8 +81,17 @@ class GraphRetriever(BaseRetriever):
         if not neo4j_manager.driver:
             from core.utils.logger import logger
 
-            logger.error("Neo4j driver not initialized. GraphRetriever failed.")
-            return {}, [], []
+            logger.warning(
+                "Neo4j driver not initialized. Falling back to local in-memory graph search."
+            )
+            from core.graph_construct.feature_graph import search_similar_nodes_direct
+
+            top_k = retrieve_config.get("top_retrieve_top_k", 5)
+            cases, laws = search_similar_nodes_direct(
+                self.model, query_embedding, query_text, top_k=top_k
+            )
+
+            return {}, laws, cases
 
         with neo4j_manager.driver.session() as session:
             # 1. Vector Search for Cases

@@ -23,10 +23,11 @@ def judge_law(chatbot, case_description, law):
             judge_deps = []
 
     for judge in judge_deps:
+        law_desc = law.get("description", law.get("text", ""))
         judge_res = chatbot.generate_response(
             get_prompt("JUDGE_LAW_PROMPT").format(
-                law_item=law["description"].replace("\n", ""),
-                related=law["related_laws"],
+                law_item=law_desc.replace("\n", ""),
+                related=law.get("related_laws", []),
                 element=judge,
                 case=case_description,
             ),
@@ -38,10 +39,11 @@ def judge_law(chatbot, case_description, law):
         elif "false" in decision:
             false_list.append(judge)
 
+    law_desc = law.get("description", law.get("text", ""))
     res = chatbot.generate_response(
         get_prompt("JUDGE_LAW_PROMPT0").format(
             case=case_description,
-            law=law["description"],
+            law=law_desc,
             true_list=true_list,
             false_list=false_list,
         ),

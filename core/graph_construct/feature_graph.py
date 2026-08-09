@@ -682,6 +682,8 @@ def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
                     "description": case_data.get("description", ""),
                     "caseId": case_data.get("caseId", ""),
                     "similarity": similarity,
+                    "law": case_data.get("law", []),
+                    "dispute": case_data.get("dispute", []),
                 }
             )
 
@@ -733,6 +735,8 @@ def search_similar_nodes_direct(model, query_embedding, query_text, top_k=5):
                 "description": record.get("description", ""),
                 "caseId": record.get("caseId", ""),
                 "similarity": record["similarity"],
+                "law": record.get("law", []),
+                "dispute": record.get("dispute", []),
             }
         )
 

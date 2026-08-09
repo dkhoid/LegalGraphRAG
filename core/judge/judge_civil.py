@@ -41,7 +41,7 @@ def judge_civil_all(chatbot, law_used, retrieved_facts, case_description):
     response = chatbot.generate_response(
         get_prompt("JUDGE_CIVIL_ALL_PROMPT")
         + get_prompt("JUDGE_CIVIL_ALL_INPUT_TEMPLATE").format(
-            law=format_law(law_used), case=case_description
+            law=format_law(law_used), facts=format_fact(retrieved_facts), case=case_description
         ),
         max_length=4096,
     )

@@ -54,8 +54,8 @@ class ModelConfig:
 class DataConfig:
     """Data path configuration"""
 
-    case_db_path: str = "./data/processed/cases_with_feature.json"
-    law_to_dispute_path: str = "./data/processed/law_to_dispute.json"
+    case_db_path: str = "./data/clean/cases_clean.json"
+    law_to_dispute_path: str = "./data/clean/law_to_dispute_clean.json"
     datasets_path: Optional[str] = None  # Dataset root directory
     output_dir: str = "./data/outputs"
 
@@ -133,9 +133,9 @@ class LegalGraphRAGConfig:
 
         # Data configuration
         data_config = DataConfig(
-            case_db_path=os.getenv("case_db_path", "./data/processed/cases_with_feature.json"),
+            case_db_path=os.getenv("case_db_path", "./data/clean/cases_clean.json"),
             law_to_dispute_path=os.getenv(
-                "law_to_dispute_path", "./data/processed/law_to_dispute.json"
+                "law_to_dispute_path", "./data/clean/law_to_dispute_clean.json"
             ),
             datasets_path=os.getenv("datasets_path"),
             output_dir=os.getenv("output_dir", "./data/outputs"),
@@ -242,9 +242,9 @@ class LegalGraphRAG:
         # Initialize model
         self.model = self._init_model()
 
-        # Load data (disabled for Neo4j refactoring to save memory)
-        self.cases_db = None
-        self.law_to_dispute = None
+        # Internal storage for lazy-loaded datasets
+        self._cases_db = None
+        self._law_to_dispute = None
 
         # Initialize graph database connection (Neo4j)
         from core.graph_construct.neo4j_manager import neo4j_manager
@@ -308,6 +308,28 @@ class LegalGraphRAG:
             )
         with open(self.config.data.law_to_dispute_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    @property
+    def cases_db(self) -> List[Dict[str, Any]]:
+        """Lazy-loaded case database"""
+        if self._cases_db is None:
+            self._cases_db = self._load_cases_db()
+        return self._cases_db
+
+    @cases_db.setter
+    def cases_db(self, value: Optional[List[Dict[str, Any]]]):
+        self._cases_db = value
+
+    @property
+    def law_to_dispute(self) -> List[Dict[str, Any]]:
+        """Lazy-loaded law to dispute mapping"""
+        if self._law_to_dispute is None:
+            self._law_to_dispute = self._load_law_to_dispute()
+        return self._law_to_dispute
+
+    @law_to_dispute.setter
+    def law_to_dispute(self, value: Optional[List[Dict[str, Any]]]):
+        self._law_to_dispute = value
 
     def analyze_case(self, case: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -515,8 +537,13 @@ class LegalGraphRAG:
 
     def __del__(self):
         """Destructor, auto-save graph database"""
-        if self.config.graph.auto_save and self.config.graph.graph_db_path:
-            try:
-                self.save_graph_db()
-            except Exception as e:
-                logger.error(f"Failed to auto-save graph database: {e}")
+        try:
+            import sys
+
+            if sys is None or getattr(sys, "meta_path", None) is None:
+                return
+            if hasattr(self, "config") and self.config and getattr(self.config, "graph", None):
+                if self.config.graph.auto_save and self.config.graph.graph_db_path:
+                    self.save_graph_db()
+        except Exception:
+            pass
