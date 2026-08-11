@@ -1,3 +1,5 @@
+import json
+import re
 from core.prompt import get_prompt
 
 
@@ -53,3 +55,59 @@ def judge_law(chatbot, case_description, law):
     if "true" in decision:
         return True, res
     return False, res
+
+
+def judge_law_batch(chatbot, case_description: str, law: dict) -> tuple:
+    """Evaluate all judge_dep conditions of a law in a single structured LLM call.
+
+    This is the batch-optimised replacement for judge_law(). Instead of making
+    N+1 sequential calls (one per condition + one aggregation), it sends all
+    conditions in one prompt and expects a JSON response.
+
+    Falls back to the original judge_law() when:
+    - law has no judge_dep conditions (uses JUDGE_LAW_PROMPT1 path)
+    - the model returns un-parseable JSON
+
+    Args:
+        chatbot: Any model instance with a generate_response() method.
+        case_description: String description of the case/defendant.
+        law: Law dict with at least "description"/"text" and optionally "judge_dep".
+
+    Returns:
+        Tuple (applicable: bool, reasoning: str) – same contract as judge_law().
+    """
+    import ast
+
+    judge_deps = law.get("judge_dep", [])
+    if isinstance(judge_deps, str):
+        try:
+            judge_deps = ast.literal_eval(judge_deps)
+        except (ValueError, SyntaxError):
+            judge_deps = []
+
+    # No structured conditions → use the simpler single-call path
+    if not judge_deps:
+        return judge_law(chatbot, case_description, law)
+
+    law_desc = law.get("description", law.get("text", ""))
+    conditions_numbered = "\n".join(f"[{i + 1}] {cond}" for i, cond in enumerate(judge_deps))
+
+    prompt = get_prompt("JUDGE_LAW_BATCH_PROMPT").format(
+        law_desc=law_desc.replace("\n", " "),
+        conditions_numbered=conditions_numbered,
+        case=case_description,
+    )
+    response = chatbot.generate_response(prompt, max_length=512)
+
+    try:
+        # Extract first JSON object from response (model may add preamble text)
+        match = re.search(r"\{.*\}", response, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON object found in response")
+        parsed = json.loads(match.group())
+        applicable = bool(parsed.get("applicable", False))
+        reasoning = str(parsed.get("conditions", []))
+        return applicable, reasoning
+    except Exception:
+        # Safe fallback: never crash, just use the original method
+        return judge_law(chatbot, case_description, law)

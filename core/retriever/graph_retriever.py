@@ -1,7 +1,7 @@
 from typing import Dict, Any, Tuple, List
 from core.retriever.base_retriever import BaseRetriever
-from core.graph_construct.feature_graph import query_similar_nodes
 from core.prompt import get_prompt
+from core.utils.rrf import reciprocal_rank_fusion
 
 
 def concat_feature_descriptions(description: Dict[str, Any]) -> str:
@@ -72,9 +72,13 @@ class GraphRetriever(BaseRetriever):
 
         original_retrieved_res = {}
         retrieved_facts = []
-        retrieved_laws = []
         seen_case_ids = set()
-        seen_law_ids = set()
+
+        # Separate ordered lists for RRF fusion (maintain retrieval order per source)
+        vector_laws: List[Dict[str, Any]] = []
+        bm25_laws: List[Dict[str, Any]] = []
+        vector_law_ids: set = set()
+        bm25_law_ids: set = set()
 
         from core.graph_construct.neo4j_manager import neo4j_manager
 
@@ -118,16 +122,16 @@ class GraphRetriever(BaseRetriever):
                                 "law": c.get("law", []),
                             }
                         )
-                    for l in record["laws"]:
-                        if l and l["id"] not in seen_law_ids:
-                            seen_law_ids.add(l["id"])
-                            retrieved_laws.append(
+                    for law_node in record["laws"]:
+                        if law_node and law_node["id"] not in vector_law_ids:
+                            vector_law_ids.add(law_node["id"])
+                            vector_laws.append(
                                 {
-                                    "id": l["id"],
-                                    "entry": l.get("entry"),
-                                    "description": l.get("description"),
-                                    "judge_dep": l.get("judge_dep", "[]"),
-                                    "related_laws": l.get("related_laws", "[]"),
+                                    "id": law_node["id"],
+                                    "entry": law_node.get("entry"),
+                                    "description": law_node.get("description"),
+                                    "judge_dep": law_node.get("judge_dep", "[]"),
+                                    "related_laws": law_node.get("related_laws", "[]"),
                                 }
                             )
 
@@ -167,16 +171,16 @@ class GraphRetriever(BaseRetriever):
                                         "law": c.get("law", []),
                                     }
                                 )
-                            for l in record["laws"]:
-                                if l and l["id"] not in seen_law_ids:
-                                    seen_law_ids.add(l["id"])
-                                    retrieved_laws.append(
+                            for law_node in record["laws"]:
+                                if law_node and law_node["id"] not in bm25_law_ids:
+                                    bm25_law_ids.add(law_node["id"])
+                                    bm25_laws.append(
                                         {
-                                            "id": l["id"],
-                                            "entry": l.get("entry"),
-                                            "description": l.get("description"),
-                                            "judge_dep": l.get("judge_dep", "[]"),
-                                            "related_laws": l.get("related_laws", "[]"),
+                                            "id": law_node["id"],
+                                            "entry": law_node.get("entry"),
+                                            "description": law_node.get("description"),
+                                            "judge_dep": law_node.get("judge_dep", "[]"),
+                                            "related_laws": law_node.get("related_laws", "[]"),
                                         }
                                     )
                     except Exception as e:
@@ -191,16 +195,21 @@ class GraphRetriever(BaseRetriever):
             augmented_laws = self._retrieve_law_augment(case)
             original_retrieved_res["augmented"] = augmented_laws
 
-        for law in augmented_laws:
-            if law["id"] not in seen_law_ids:
-                seen_law_ids.add(law["id"])
-                retrieved_laws.append(law)
+        # 4. RRF fusion: merge vector, BM25, and augmented law lists
+        fused_laws = reciprocal_rank_fusion(
+            [vector_laws, bm25_laws, augmented_laws],
+            id_key="id",
+        )
+        original_retrieved_res["fusion_method"] = "rrf"
+        original_retrieved_res["vector_laws_count"] = len(vector_laws)
+        original_retrieved_res["bm25_laws_count"] = len(bm25_laws)
+        original_retrieved_res["augmented_laws_count"] = len(augmented_laws)
 
-        # 4. Safe parsing
+        # 5. Safe parsing of judge_dep and related_laws fields
         final_retrieved_laws = []
         import ast
 
-        for law in retrieved_laws:
+        for law in fused_laws:
             try:
                 law["judge_dep"] = ast.literal_eval(str(law.get("judge_dep", "[]")))
             except Exception:

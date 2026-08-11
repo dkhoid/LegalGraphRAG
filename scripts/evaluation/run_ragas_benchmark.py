@@ -18,7 +18,7 @@ from datasets import Dataset
 from ragas import evaluate
 
 try:
-    from ragas.metrics import Faithfulness, AnswerRelevancy
+    from ragas.metrics.collections import Faithfulness, AnswerRelevancy
 except ImportError:
     pass
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -149,7 +149,10 @@ def main():
         logger.info("Evaluating Vector RAG...")
         vector_dataset = Dataset.from_dict(vector_data)
         vector_result = evaluate(
-            vector_dataset, metrics=metrics, llm=evaluator_llm, embeddings=evaluator_embeddings
+            vector_dataset,
+            metrics=metrics,
+            llm=evaluator_llm,
+            embeddings=evaluator_embeddings,
         )
         print("\n=== VECTOR RAGAS RESULT ===")
         print(vector_result)
@@ -162,7 +165,10 @@ def main():
         logger.info("Evaluating Graph RAG...")
         graph_dataset = Dataset.from_dict(graph_data)
         graph_result = evaluate(
-            graph_dataset, metrics=metrics, llm=evaluator_llm, embeddings=evaluator_embeddings
+            graph_dataset,
+            metrics=metrics,
+            llm=evaluator_llm,
+            embeddings=evaluator_embeddings,
         )
         print("\n=== GRAPH RAGAS RESULT ===")
         print(graph_result)

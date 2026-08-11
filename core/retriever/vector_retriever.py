@@ -2,6 +2,7 @@ from typing import Dict, Any, Tuple, List
 from core.retriever.base_retriever import BaseRetriever
 from core.graph_construct.feature_graph import query_similar_nodes_naive, query_similar_laws_naive
 from rank_bm25 import BM25Okapi
+from core.utils.rrf import reciprocal_rank_fusion
 
 
 def concat_feature_descriptions(description: Dict[str, Any]) -> str:
@@ -69,48 +70,55 @@ class VectorRetriever(BaseRetriever):
         retrieved_facts = query_similar_nodes_naive(self.model, query_text, top_k=top_k)
 
         # 2. Retrieve similar laws (Hybrid Search: BM25 + Vector Search)
-        # 2a. Vector Search
-        retrieved_laws_raw = query_similar_laws_naive(query_text, top_k=top_k * 2)
+        # 2a. Vector Search – returns ordered list (best first)
+        vector_laws_raw = query_similar_laws_naive(query_text, top_k=top_k * 2)
 
         # 2b. BM25 Search
         self._init_bm25(law_to_dispute)
         tokenized_query = query_text.lower().split(" ")
         bm25_scores = self._bm25.get_scores(tokenized_query)
 
-        # Get top K from BM25
         top_n = top_k * 2
         top_bm25_indices = sorted(
             range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
         )[:top_n]
+        bm25_laws_raw = [self._law_mapping[i] for i in top_bm25_indices if bm25_scores[i] > 0]
 
-        bm25_results = [self._law_mapping[i] for i in top_bm25_indices if bm25_scores[i] > 0]
-
-        retrieved_law_entries = [str(law["entry"]) for law in retrieved_laws_raw]
-        retrieved_law_entries.extend([str(law["entry"]) for law in bm25_results])
-
-        # Also collect laws attached to the retrieved cases
+        # 2c. Collect laws attached to retrieved cases
+        case_laws_raw = []
         for item in retrieved_facts:
             for db_case in cases_db:
                 if db_case["id"] == item["caseId"]:
                     item["dispute"] = db_case.get("dispute", [])
                     item["law"] = db_case.get("law", [])
-                    retrieved_law_entries.extend(db_case.get("law", []))
+                    for law_entry in db_case.get("law", []):
+                        case_laws_raw.append({"entry": str(law_entry), "id": str(law_entry)})
                     break
 
-        retrieved_law_entries = list(set(retrieved_law_entries))
-        final_retrieved_laws = []
+        # 2d. RRF fusion across all three sources
+        fused_law_refs = reciprocal_rank_fusion(
+            [vector_laws_raw, bm25_laws_raw, case_laws_raw],
+            id_key="entry",
+        )
 
-        # Reconstruct full law node data
-        for entry_id in retrieved_law_entries:
+        # Reconstruct full law node data from fused entry IDs
+        seen_entries: set = set()
+        final_retrieved_laws = []
+        for ref in fused_law_refs:
+            entry_id = str(ref.get("entry") or ref.get("id", ""))
+            if not entry_id or entry_id in seen_entries:
+                continue
+            seen_entries.add(entry_id)
+
             try:
-                if int(entry_id) < 102:  # Filter out generic law provisions (introductory articles)
+                if int(entry_id) < 102:  # Filter out generic introductory articles
                     continue
             except ValueError:
                 pass
 
             try:
                 for item in law_to_dispute:
-                    if str(item["id"]) == str(entry_id):
+                    if str(item["id"]) == entry_id:
                         for entry in item.get("items", [item]):
                             final_retrieved_laws.append(
                                 {
@@ -129,7 +137,10 @@ class VectorRetriever(BaseRetriever):
 
         original_retrieved_res = {
             "method": "hybrid_bm25_vector",
+            "fusion_method": "rrf",
             "top_k_used": top_k,
+            "vector_laws_count": len(vector_laws_raw),
+            "bm25_laws_count": len(bm25_laws_raw),
             "laws_found_count": len(final_retrieved_laws),
         }
 

@@ -128,10 +128,30 @@ Lưu ý:
 
 """
 
+JUDGE_LAW_BATCH_PROMPT = """
+Bạn là trợ lý pháp lý chuyên nghiệp. Đánh giá xem điều luật sau có áp dụng cho vụ án này không bằng cách kiểm tra từng yếu tố cấu thành.
+
+**Điều luật:** {law_desc}
+
+**Các yếu tố cấu thành cần kiểm tra:**
+{conditions_numbered}
+
+**Vụ án:** {case}
+
+**Hướng dẫn:**
+- Kiểm tra từng yếu tố được đánh số xem tình tiết vụ án có đáp ứng không.
+- Nếu phần lớn yếu tố được đáp ứng, hoặc vụ án có liên quan mật thiết, hãy đặt "applicable": true.
+- Chỉ đặt "applicable": false khi điều luật hoàn toàn không liên quan đến vụ án.
+
+**Trả về DUY NHẤT một JSON object, không có text nào khác:**
+{{"conditions": [{{"id": 1, "met": true, "reason": "lý do ngắn gọn"}}], "applicable": true}}
+"""
+
 __all__ = [
     "JUDGE_LAW_PROMPT",
     "JUDGE_LAW_PROMPT0",
     "JUDGE_LAW_PROMPT1",
+    "JUDGE_LAW_BATCH_PROMPT",
     "JUDGE_CIVIL_PROMPT",
     "JUDGE_CIVIL_ALL_PROMPT",
 ]

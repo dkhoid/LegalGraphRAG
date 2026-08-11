@@ -1,9 +1,13 @@
-import sys, os, json, random
+import sys
+import os
+import json
+import random
 from dotenv import load_dotenv
+from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv()
-from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
+
 
 config = LegalGraphRAGConfig.from_env_file(".env")
 config.model.model_name = "gpt4o_mini"

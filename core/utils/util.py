@@ -8,9 +8,9 @@ from core.graph_construct.feature_graph import (
     query_similar_nodes_naive,
 )
 
-from core.judge.judge_law import judge_law
+from core.judge.judge_law import judge_law, judge_law_batch
 from core.judge.judge_civil import judge_civil_all
-
+from core.utils.confidence import compute_confidence
 from core.prompt import get_prompt
 
 
@@ -156,6 +156,10 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
     # Cap on how many laws to evaluate in judge_law (prevents unbounded API calls)
     max_judge_laws = retrieve_config.get("max_judge_laws", 8)
 
+    # Feature flag: use batch judge (single LLM call per law) or original per-condition loop
+    use_batch_judge = retrieve_config.get("batch_judge", True)
+    judge_fn = judge_law_batch if use_batch_judge else judge_law
+
     criminals = case["name"] if isinstance(case["name"], list) else [case["name"]]
     case_by_defendant = segment_case_text_withname(chatbot, case["fact"][:4096], criminals)
     for item in case_by_defendant:
@@ -171,7 +175,7 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
 
         law_used = []
         for law in laws_to_judge:
-            used, _ = judge_law(
+            used, _ = judge_fn(
                 chatbot, f"Party: {item['name']}, Description: {item['description']}", law
             )
             if used:
@@ -192,11 +196,30 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
             fact_used,
             f"Party: {item['name']}, Description: {item['description']}",
         )
+
+        # Existing output fields (unchanged for backward compatibility)
         item["judge_result"] = judge_result
         item["retrieved_laws"] = retrieved_laws
         item["retrieved_facts"] = retrieved_facts
         item["original_retrieved_res"] = original_retrieved_res
         item["used_laws"] = law_used
         item["used_facts"] = fact_used
+
+        # NEW: Confidence score (heuristic, no LLM cost)
+        item["confidence"] = compute_confidence(
+            retrieved_laws=retrieved_laws,
+            used_laws=law_used,
+            retrieved_facts=retrieved_facts,
+        ).to_dict()
+
+        # NEW: Reasoning trace for debugging and audit
+        item["reasoning_trace"] = {
+            "retrieved_laws_count": len(retrieved_laws),
+            "retrieved_facts_count": len(retrieved_facts),
+            "used_laws_count": len(law_used),
+            "used_facts_count": len(fact_used),
+            "batch_judge": use_batch_judge,
+            "fusion_method": original_retrieved_res.get("fusion_method", "union"),
+        }
 
     return case_by_defendant
