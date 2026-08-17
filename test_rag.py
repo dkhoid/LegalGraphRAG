@@ -4,7 +4,6 @@ Chạy: python test_rag.py
 """
 
 import sys
-import os
 import json
 import time
 
@@ -113,7 +112,7 @@ def run_tests():
                 judge = r.get("judge_result", {})
                 used_laws = r.get("used_laws", [])
 
-                print(f"\n  ⚖️  Kết quả phân tích:")
+                print("\n  ⚖️  Kết quả phân tích:")
                 print(f"     Loại tranh chấp AI xác định: {judge.get('dispute_type', 'N/A')}")
                 print(f"     Điều luật áp dụng: {judge.get('law_article', 'N/A')}")
 
@@ -164,7 +163,7 @@ def run_tests():
 
     with open("outputs/test_results.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"\n  📁 Kết quả chi tiết đã lưu tại: outputs/test_results.json")
+    print("\n  📁 Kết quả chi tiết đã lưu tại: outputs/test_results.json")
 
 
 if __name__ == "__main__":

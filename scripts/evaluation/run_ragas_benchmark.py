@@ -1,5 +1,16 @@
+import os
+import random
 import sys
 import types
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from datasets import Dataset
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
+from core.utils.logger import logger
 
 # Create a mock module for langchain_community.chat_models.vertexai
 mock_vertexai = types.ModuleType("langchain_community.chat_models.vertexai")
@@ -8,26 +19,15 @@ mock_vertexai.ChatVertexAI = type("ChatVertexAI", (object,), {})
 
 # Insert into sys.modules BEFORE importing ragas
 sys.modules["langchain_community.chat_models.vertexai"] = mock_vertexai
-import os
-import sys
-import random
-import time
-import pandas as pd
-from dotenv import load_dotenv
-from datasets import Dataset
-from ragas import evaluate
+
+from ragas import evaluate  # noqa: E402
 
 try:
-    from ragas.metrics.collections import Faithfulness, AnswerRelevancy
+    from ragas.metrics.collections import Faithfulness, AnswerRelevancy  # noqa: E402
 except ImportError:
     pass
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 load_dotenv()
-
-from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
-from core.utils.logger import logger
 
 
 def collect_data_for_ragas(rag, test_cases, method="vector"):

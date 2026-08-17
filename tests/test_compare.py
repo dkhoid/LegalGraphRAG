@@ -1,7 +1,5 @@
 import sys
 import os
-import json
-import random
 from dotenv import load_dotenv
 from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
 

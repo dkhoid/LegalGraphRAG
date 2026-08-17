@@ -1,4 +1,6 @@
-import sys, os, json
+import sys
+import os
+import json
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig

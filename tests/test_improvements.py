@@ -9,7 +9,6 @@ All tests use mock objects and require no LLM or database connection.
 Run with: pytest tests/test_improvements.py -v
 """
 
-import pytest
 import sys
 import os
 
