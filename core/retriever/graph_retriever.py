@@ -2,6 +2,7 @@ from typing import Dict, Any, Tuple, List
 from core.retriever.base_retriever import BaseRetriever
 from core.prompt import get_prompt
 from core.utils.rrf import reciprocal_rank_fusion
+from core.utils.legal_text import preprocess_for_retrieval
 
 
 def concat_feature_descriptions(description: Dict[str, Any]) -> str:
@@ -140,7 +141,11 @@ class GraphRetriever(BaseRetriever):
             if retrieve_config.get("direct_retrieve", True):
                 import re
 
-                clean_query = re.sub(r"[^\w\s]", "", query_text)
+                # M7: Expand Vietnamese legal abbreviations before BM25 fulltext
+                expand_abbrev = retrieve_config.get("expand_abbreviations", True)
+                bm25_query_text = preprocess_for_retrieval(query_text, expand=expand_abbrev)
+
+                clean_query = re.sub(r"[^\w\s]", "", bm25_query_text)
                 words = clean_query.split()
                 if words:
                     lucene_query = " OR ".join(
@@ -196,14 +201,27 @@ class GraphRetriever(BaseRetriever):
             original_retrieved_res["augmented"] = augmented_laws
 
         # 4. RRF fusion: merge vector, BM25, and augmented law lists
+        # M8: k is configurable (default 60, lower = sharper score spread for small datasets)
+        rrf_k = retrieve_config.get("rrf_k", 60)
         fused_laws = reciprocal_rank_fusion(
             [vector_laws, bm25_laws, augmented_laws],
+            k=rrf_k,
             id_key="id",
         )
         original_retrieved_res["fusion_method"] = "rrf"
+        original_retrieved_res["rrf_k"] = rrf_k
         original_retrieved_res["vector_laws_count"] = len(vector_laws)
         original_retrieved_res["bm25_laws_count"] = len(bm25_laws)
         original_retrieved_res["augmented_laws_count"] = len(augmented_laws)
+
+        # M2: Score threshold – drop laws below minimum RRF score
+        min_score = retrieve_config.get("min_rrf_score", 0.0)  # 0.0 = disabled by default
+        if min_score > 0:
+            before = len(fused_laws)
+            fused_laws = [
+                law_item for law_item in fused_laws if law_item.get("_rrf_score", 1.0) >= min_score
+            ]
+            original_retrieved_res["threshold_filtered"] = before - len(fused_laws)
 
         # 5. Safe parsing of judge_dep and related_laws fields
         final_retrieved_laws = []
@@ -219,5 +237,25 @@ class GraphRetriever(BaseRetriever):
             except Exception:
                 law["related_laws"] = []
             final_retrieved_laws.append(law)
+
+        # M1: MMR diversity pass – reduce redundant laws before judge
+        use_mmr = retrieve_config.get("use_mmr", False)
+        if use_mmr and final_retrieved_laws:
+            try:
+                from core.utils.mmr import maximal_marginal_relevance
+
+                mmr_k = retrieve_config.get("mmr_top_k", retrieve_config.get("max_judge_laws", 8))
+                mmr_lambda = retrieve_config.get("mmr_lambda", 0.5)
+                final_retrieved_laws = maximal_marginal_relevance(
+                    query_vec=query_embedding,
+                    laws=final_retrieved_laws,
+                    k=mmr_k,
+                    lambda_=mmr_lambda,
+                )
+                original_retrieved_res["mmr_applied"] = True
+            except Exception as e:
+                from core.utils.logger import logger
+
+                logger.warning(f"MMR failed, using original order: {e}")
 
         return original_retrieved_res, final_retrieved_laws, retrieved_facts

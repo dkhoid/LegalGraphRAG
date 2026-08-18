@@ -12,7 +12,10 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
-from core.graph_construct.feature_graph import query_similar_laws_naive, query_similar_nodes_naive
+from core.graph_construct.feature_graph import (
+    query_similar_laws_naive,
+    query_similar_nodes_naive,
+)
 from core.utils.logger import logger
 
 # Global RAG system
@@ -187,12 +190,16 @@ Bạn CHỈ ĐƯỢC phép trả về một đối tượng JSON hợp lệ. Kh�
 async def generate_prompt(request: CaseRequest):
     if not rag_system:
         raise HTTPException(
-            status_code=500, detail="RAG system is not initialized. Please check startup logs."
+            status_code=500,
+            detail="RAG system is not initialized. Please check startup logs.",
         )
     try:
         # DB calls can be slightly blocking, but typically fast. If slow, we'd thread them too.
         retrieved_facts = await run_in_threadpool(
-            query_similar_nodes_naive, rag_system.model, request.fact, top_k=request.top_k
+            query_similar_nodes_naive,
+            rag_system.model,
+            request.fact,
+            top_k=request.top_k,
         )
         retrieved_laws = await run_in_threadpool(
             query_similar_laws_naive, request.fact, top_k=request.top_k
@@ -203,7 +210,9 @@ async def generate_prompt(request: CaseRequest):
 
         prompt = build_civil_prompt(request.fact, retrieved_laws, retrieved_facts)
         return GeneratePromptResponse(
-            retrieved_laws=retrieved_laws, retrieved_facts=retrieved_facts, prompt=prompt
+            retrieved_laws=retrieved_laws,
+            retrieved_facts=retrieved_facts,
+            prompt=prompt,
         )
     except Exception as e:
         logger.error(f"Generate prompt error: {e}")
@@ -216,7 +225,8 @@ async def generate_prompt(request: CaseRequest):
 async def analyze_civil(request: CaseRequest):
     if not rag_system:
         raise HTTPException(
-            status_code=500, detail="RAG system is not initialized. Please check startup logs."
+            status_code=500,
+            detail="RAG system is not initialized. Please check startup logs.",
         )
 
     from core.utils.context import request_api_key, request_base_url, request_model_name
@@ -237,7 +247,11 @@ async def analyze_civil(request: CaseRequest):
 
         # Fix Async Blocking: Run LLM generation in threadpool
         raw_response = await run_in_threadpool(
-            rag_system.model.generate_response, prompt_response.prompt, 4096, 0.1, request.api_key
+            rag_system.model.generate_response,
+            prompt_response.prompt,
+            4096,
+            0.1,
+            request.api_key,
         )
 
         # Better JSON Parsing with fallback handling
@@ -333,7 +347,10 @@ async def set_api_key(request: APIKeyRequest):
     try:
         if hasattr(rag_system.model, "update_api_key"):
             rag_system.model.update_api_key(request.api_key)
-            return {"status": "success", "message": "Đã cập nhật API Key thành công trên server."}
+            return {
+                "status": "success",
+                "message": "Đã cập nhật API Key thành công trên server.",
+            }
         else:
             raise HTTPException(
                 status_code=400,

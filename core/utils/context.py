@@ -1,5 +1,4 @@
 import contextvars
-from typing import Optional
 
 # Thread-safe context variables cho từng request
 request_api_key = contextvars.ContextVar("request_api_key", default=None)

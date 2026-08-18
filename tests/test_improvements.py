@@ -282,3 +282,146 @@ class TestJudgeLawBatch:
         bot = MockChatbot('{"conditions": [], "applicable": true}')
         result = self.judge(bot, "case", law)
         assert isinstance(result[0], bool)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Option K1: Cross-Encoder Reranker Tests (interface only, no model download)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestCrossEncoderReranker:
+    """Tests for core/retriever/reranker.py – mock the CrossEncoder to avoid downloads."""
+
+    def _make_reranker(self, top_k=3):
+        from core.retriever.reranker import CrossEncoderReranker
+
+        reranker = CrossEncoderReranker(top_k=top_k)
+
+        # Inject mock model that scores laws by position (first = highest)
+        class MockCE:
+            def predict(self, pairs, **kw):
+                # Return descending scores so first pair ranks highest
+                return [10.0 - i for i in range(len(pairs))]
+
+        reranker._model = MockCE()
+        return reranker
+
+    def test_rerank_returns_top_k(self):
+        """Should return at most top_k items."""
+        reranker = self._make_reranker(top_k=2)
+        laws = [{"id": str(i), "description": f"law {i}"} for i in range(5)]
+        result = reranker.rerank("query", laws)
+        assert len(result) == 2
+
+    def test_rerank_preserves_law_data(self):
+        """Law dicts should survive reranking intact."""
+        reranker = self._make_reranker(top_k=5)
+        laws = [{"id": "A", "description": "about contract", "judge_dep": ["c1"]}]
+        result = reranker.rerank("query", laws)
+        assert result[0]["id"] == "A"
+        assert result[0]["judge_dep"] == ["c1"]
+
+    def test_rerank_adds_score_field(self):
+        """Reranked items should have _rerank_score for debugging."""
+        reranker = self._make_reranker(top_k=3)
+        laws = [{"id": "X", "description": "test"}]
+        result = reranker.rerank("query", laws)
+        assert "_rerank_score" in result[0]
+        assert isinstance(result[0]["_rerank_score"], float)
+
+    def test_rerank_empty_input(self):
+        """Empty law list should return empty list without error."""
+        reranker = self._make_reranker()
+        result = reranker.rerank("query", [])
+        assert result == []
+
+    def test_rerank_fewer_than_top_k(self):
+        """When fewer laws than top_k, all should be returned."""
+        reranker = self._make_reranker(top_k=10)
+        laws = [{"id": str(i), "description": f"law {i}"} for i in range(3)]
+        result = reranker.rerank("query", laws)
+        assert len(result) == 3
+
+    def test_get_reranker_singleton(self):
+        """get_reranker() should return same instance on repeated calls."""
+        from core.retriever.reranker import get_reranker
+
+        r1 = get_reranker()
+        r2 = get_reranker()
+        assert r1 is r2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Option K4: Self-Consistent Judge Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestJudgeLawSelfConsistent:
+    """Tests for judge_law_self_consistent() in core/judge/judge_law.py"""
+
+    def setup_method(self):
+        from core.judge.judge_law import judge_law_self_consistent
+
+        self.judge = judge_law_self_consistent
+
+    def _law(self):
+        return {"description": "test law", "judge_dep": ["cond1", "cond2"]}
+
+    def test_returns_three_tuple(self):
+        """Should return (bool, float, str)."""
+        bot = MockChatbot('{"conditions": [], "applicable": true}')
+        result = self.judge(bot, "case", self._law(), n_samples=3)
+        assert isinstance(result, tuple) and len(result) == 3
+        assert isinstance(result[0], bool)
+        assert isinstance(result[1], float)
+        assert isinstance(result[2], str)
+
+    def test_unanimous_true_gives_high_confidence(self):
+        """All samples agree on True → confidence should be 1.0."""
+        bot = MockChatbot('{"conditions": [], "applicable": true}')
+        decision, confidence, _ = self.judge(bot, "case", self._law(), n_samples=5)
+        assert decision is True
+        assert confidence == 1.0
+
+    def test_unanimous_false_gives_high_confidence(self):
+        """All samples agree on False → confidence should be 0.0, decision False."""
+        bot = MockChatbot('{"conditions": [], "applicable": false}')
+        decision, confidence, _ = self.judge(bot, "case", self._law(), n_samples=5)
+        assert decision is False
+        assert confidence == 0.0
+
+    def test_confidence_bounded_zero_to_one(self):
+        """Confidence should always be in [0, 1]."""
+        bot = MockChatbot('{"conditions": [], "applicable": true}')
+        _, confidence, _ = self.judge(bot, "case", self._law(), n_samples=3)
+        assert 0.0 <= confidence <= 1.0
+
+    def test_separate_judge_chatbot_used(self):
+        """judge_chatbot parameter should override the sampler model."""
+        primary = MockChatbot('{"conditions": [], "applicable": false}')
+        cheap = MockChatbot('{"conditions": [], "applicable": true}')
+        decision, confidence, _ = self.judge(
+            primary, "case", self._law(), n_samples=3, judge_chatbot=cheap
+        )
+        # cheap bot always says true → should win
+        assert decision is True
+
+    def test_n_samples_respected(self):
+        """Confidence denominator should match n_samples."""
+        bot = MockChatbot('{"conditions": [], "applicable": true}')
+        _, confidence, reasoning = self.judge(bot, "case", self._law(), n_samples=4)
+        # 4/4 = 1.0
+        assert confidence == 1.0
+        assert "4/4" in reasoning
+
+    def test_fallback_on_all_errors(self):
+        """If all samples fail, should fall back to primary chatbot."""
+
+        class ErrorBot:
+            def generate_response(self, p, **kw):
+                raise RuntimeError("always fails")
+
+        primary = MockChatbot('{"conditions": [], "applicable": true}')
+        result = self.judge(primary, "case", self._law(), n_samples=3, judge_chatbot=ErrorBot())
+        # Falls back to primary → should succeed
+        assert isinstance(result[0], bool)

@@ -83,6 +83,15 @@ def run_tests():
     GraphDBManager.load("data/clean/graph.pkl")
 
     config = LegalGraphRAGConfig.from_env_file(".env")
+
+    # Enable new features for testing
+    config.retrieve.use_reranker = True
+    config.retrieve.use_self_consistent = True
+    config.retrieve.judge_chatbot = "gemini_flash_lite"
+    config.retrieve.use_mmr = True
+    config.retrieve.min_rrf_score = 0.01
+    config.retrieve.expand_abbreviations = True
+
     rag = LegalGraphRAG(config=config)
     rag.cases_db = rag._load_cases_db()
     rag.law_to_dispute = rag._load_law_to_dispute()

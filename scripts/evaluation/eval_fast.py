@@ -1,6 +1,5 @@
 import os
 import sys
-import json
 import time
 import argparse
 import random
@@ -78,7 +77,7 @@ def main():
         elapsed = time.time() - start_time
 
         ground_truth = case.get("law", [])
-        retrieved_ids = [l.get("entry") for l in retrieved_laws]
+        retrieved_ids = [law.get("entry") for law in retrieved_laws]
 
         p, r, f1 = calculate_metrics(retrieved_ids, ground_truth)
         results["precision"].append(p)

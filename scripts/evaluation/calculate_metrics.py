@@ -56,7 +56,6 @@ def calculate_metrics(results_file):
         # Or better, just calculate accuracy manually for multi-label.
 
         # Let's do a simple exact match (or at least one match) accuracy
-        true_set = set([str(t).lower().strip() for t in true_disputes])
         pred_set = set([str(p).lower().strip() for p in predicted_disputes])
 
         # If intersection exists, we consider it a 'match' for the dominant charge.

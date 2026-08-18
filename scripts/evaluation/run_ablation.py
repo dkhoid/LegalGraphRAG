@@ -21,19 +21,19 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
-from core.utils.logger import logger
+from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig  # noqa: E402
+from core.utils.logger import logger  # noqa: E402
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Caching to save token costs during ablation
 # ─────────────────────────────────────────────────────────────────────────────
-import copy
-import core.utils.util as util_module
-from core.preprocess.case_seg import segment_case_text_withname as orig_segment
-from core.preprocess.get_features import get_features as orig_get_features
-from core.judge.judge_law import judge_law as orig_judge_law
-from core.judge.judge_civil import judge_civil_all as orig_judge_civil
+import copy  # noqa: E402
+import core.utils.util as util_module  # noqa: E402
+from core.preprocess.case_seg import segment_case_text_withname as orig_segment  # noqa: E402
+from core.preprocess.get_features import get_features as orig_get_features  # noqa: E402
+from core.judge.judge_law import judge_law as orig_judge_law  # noqa: E402
+from core.judge.judge_civil import judge_civil_all as orig_judge_civil  # noqa: E402
 
 segment_cache = {}
 features_cache = {}
@@ -63,7 +63,7 @@ def cached_judge_law(chatbot, text, law):
 
 
 def cached_judge_civil_all(chatbot, law_used, fact_used, text):
-    law_ids = "_".join(str(l.get("id")) for l in law_used)
+    law_ids = "_".join(str(law.get("id")) for law in law_used)
     fact_ids = "_".join(str(f.get("caseId")) for f in fact_used)
     cache_key = f"{text}___laws_{law_ids}___facts_{fact_ids}"
     if cache_key not in judge_civil_cache:
@@ -86,7 +86,7 @@ def normalize(text: str) -> str:
     return str(text).lower().strip()
 
 
-import re
+import re  # noqa: E402
 
 
 def extract_law_numbers(law_str: str) -> List[str]:
@@ -349,7 +349,7 @@ def run_experiment(
     start = time.time()
     for idx, case in enumerate(test_cases, 1):
         true_disputes = case.get("dispute", [])
-        true_laws = [str(l) for l in case.get("laws", case.get("law", []))]
+        true_laws = [str(law) for law in case.get("laws", case.get("law", []))]
 
         logger.info(f"  [{idx}/{len(test_cases)}] Bắt đầu xử lý Case: {case.get('id')}...")
 
@@ -427,7 +427,7 @@ def build_markdown_report(all_results: List[Dict[str, Any]], output_path: str):
     lines = [
         "# LegalGraphRAG — Ablation Evaluation Report",
         "",
-        f"**Dataset**: tiny_eval (5 cases, Vietnamese Labour Law)",
+        "**Dataset**: tiny_eval (5 cases, Vietnamese Labour Law)",
         f"**Model**: {os.getenv('model_name', 'gpt4o_mini')}",
         f"**Embedding**: {os.getenv('embedding_model', 'text-embedding-3-small')}",
         "",

@@ -27,7 +27,7 @@ from datetime import datetime
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
-from core.utils.logger import logger
+from core.utils.logger import logger  # noqa: E402
 
 # ─────────────────────────── CONSTANTS ───────────────────────────
 
@@ -185,7 +185,7 @@ def clean_corpus(corpus_raw: str) -> tuple[list[dict], dict]:
     logger.info("=== Module A: Cleaning corpus ===")
 
     with open(corpus_raw, encoding="utf-8") as f:
-        raw = [json.loads(l) for l in f if l.strip()]
+        raw = [json.loads(line) for line in f if line.strip()]
 
     stats = {
         "total_raw": len(raw),
@@ -378,7 +378,7 @@ def clean_cases(
             stats["domain_normalized"] += 1
 
         # ── Resolve law refs ──
-        raw_laws: list[str] = [str(l) for l in (case.get("law") or case.get("laws") or [])]
+        raw_laws: list[str] = [str(law) for law in (case.get("law") or case.get("laws") or [])]
         resolved_refs: list[dict] = []
         confidence_counts: Counter = Counter()
 

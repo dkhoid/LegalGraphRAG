@@ -1,7 +1,6 @@
 import json
 import time
 import os
-import shutil
 import logging
 from tqdm import tqdm
 import requests
@@ -115,7 +114,7 @@ def main():
             try:
                 start_index = int(f.read().strip())
                 logger.info(f"▶️ Sẽ tiếp tục chạy từ batch số: {start_index}")
-            except:
+            except Exception:
                 start_index = 0
 
         with open(output_file, "r", encoding="utf-8") as f:

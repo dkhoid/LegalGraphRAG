@@ -111,3 +111,64 @@ def judge_law_batch(chatbot, case_description: str, law: dict) -> tuple:
     except Exception:
         # Safe fallback: never crash, just use the original method
         return judge_law(chatbot, case_description, law)
+
+
+def judge_law_self_consistent(
+    chatbot,
+    case_description: str,
+    law: dict,
+    n_samples: int = 5,
+    judge_chatbot=None,
+) -> tuple[bool, float, str]:
+    """Self-consistency judge: sample N decisions and take majority vote.
+
+    Instead of calling the judge once and trusting the output, we call it N
+    times with temperature > 0 to get diverse reasoning paths, then aggregate.
+    Paths that consistently agree are more likely to be correct.
+
+    This technique is from "Self-Consistency Improves Chain of Thought Reasoning"
+    (Wang et al., 2023, https://arxiv.org/abs/2203.11171).
+
+    Args:
+        chatbot: Primary model (used as fallback if judge_chatbot is None).
+        case_description: Case text for the current defendant.
+        law: Law dict with "description"/"text" and optional "judge_dep".
+        n_samples: Number of independent samples to take. More = more reliable
+                   but higher latency/cost. Recommended: 3 (fast) to 7 (accurate).
+        judge_chatbot: Optional cheap model (e.g., Gemini Flash Lite) for sampling.
+                       If None, the primary chatbot is used.
+
+    Returns:
+        Tuple of (decision: bool, confidence: float, reasoning: str) where
+        - decision    = majority vote result (True if > 50% samples say applicable)
+        - confidence  = fraction of samples agreeing (e.g., 0.8 = 4/5 agree)
+        - reasoning   = summary of agreement ratio
+    """
+    sampler = judge_chatbot if judge_chatbot is not None else chatbot
+    votes: list[bool] = []
+
+    for i in range(n_samples):
+        try:
+            # Use batch judge for structured output; vary temperature implicitly
+            # by asking the sampler model (Gemini uses default temp 0.7)
+            result, _ = judge_law_batch(sampler, case_description, law)
+            votes.append(result)
+        except Exception:
+            # On any error, skip this sample rather than crashing
+            continue
+
+    if not votes:
+        # All samples failed – fall back to primary chatbot single call
+        result, reasoning = judge_law_batch(chatbot, case_description, law)
+        return result, 0.5, reasoning
+
+    true_count = sum(votes)
+    total = len(votes)
+    confidence = true_count / total
+    decision = confidence > 0.5
+
+    reasoning = (
+        f"Self-consistency: {true_count}/{total} samples say applicable "
+        f"(confidence={confidence:.2f})"
+    )
+    return decision, confidence, reasoning

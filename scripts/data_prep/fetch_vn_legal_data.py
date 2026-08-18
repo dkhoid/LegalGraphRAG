@@ -13,7 +13,7 @@ from html.parser import HTMLParser
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
-from core.utils.logger import logger
+from core.utils.logger import logger  # noqa: E402
 
 
 class HTMLTextExtractor(HTMLParser):
@@ -74,8 +74,6 @@ def parse_articles_from_html(html_content, law_name=""):
 
 def main():
     from datasets import load_dataset
-    import pyarrow.parquet as pq
-    import glob
 
     raw_data_dir = os.path.join(PROJECT_ROOT, "data", "raw")
     os.makedirs(raw_data_dir, exist_ok=True)
@@ -97,7 +95,6 @@ def main():
     for i in range(len(ds_metadata)):
         row = ds_metadata[i]
         skh = str(row.get(skh_key, "")).lower()
-        title = str(row.get(title_key, "")).lower()
 
         for t_skh, t_name in targets.items():
             if t_skh in skh:

@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 load_dotenv()
 
-from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
-from core.utils.logger import logger
+from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig  # noqa: E402
+from core.utils.logger import logger  # noqa: E402
 
 
 def calculate_precision(retrieved_res):

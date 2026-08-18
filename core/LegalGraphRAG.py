@@ -37,6 +37,8 @@ class ModelConfig:
             "glm4",
             "deepseek_v3",
             "gpt4o_mini",
+            "gemini_flash",
+            "gemini_flash_lite",
         ]
         if self.model_name not in valid_models:
             raise ValueError(
@@ -74,6 +76,21 @@ class RetrieveConfig:
     top_retrieve_top_k: int = 5
     direct_retrieve_top_k: int = 5
 
+    # New advanced pipeline features
+    use_reranker: bool = False
+    reranker_top_k: int = 8
+    use_self_consistent: bool = False
+    self_consistent_n: int = 3
+    judge_chatbot: str = "gemini_flash_lite"
+    use_mmr: bool = False
+    mmr_lambda: float = 0.5
+    mmr_top_k: int = 5
+    min_rrf_score: float = 0.0
+    law_desc_cap: int = 600
+    max_applicable_laws: int = 8
+    expand_abbreviations: bool = True
+    rrf_k: int = 60
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format"""
         return {
@@ -82,6 +99,19 @@ class RetrieveConfig:
             "augment_retrieve": self.augment_retrieve,
             "top_retrieve_top_k": self.top_retrieve_top_k,
             "direct_retrieve_top_k": self.direct_retrieve_top_k,
+            "use_reranker": self.use_reranker,
+            "reranker_top_k": self.reranker_top_k,
+            "use_self_consistent": self.use_self_consistent,
+            "self_consistent_n": self.self_consistent_n,
+            "judge_chatbot": self.judge_chatbot,
+            "use_mmr": self.use_mmr,
+            "mmr_lambda": self.mmr_lambda,
+            "mmr_top_k": self.mmr_top_k,
+            "min_rrf_score": self.min_rrf_score,
+            "law_desc_cap": self.law_desc_cap,
+            "max_applicable_laws": self.max_applicable_laws,
+            "expand_abbreviations": self.expand_abbreviations,
+            "rrf_k": self.rrf_k,
         }
 
 
@@ -148,6 +178,19 @@ class LegalGraphRAGConfig:
             augment_retrieve=os.getenv("augment_retrieve", "True") == "True",
             top_retrieve_top_k=int(os.getenv("top_retrieve_top_k", 5)),
             direct_retrieve_top_k=int(os.getenv("direct_retrieve_top_k", 5)),
+            use_reranker=os.getenv("use_reranker", "False") == "True",
+            reranker_top_k=int(os.getenv("reranker_top_k", 8)),
+            use_self_consistent=os.getenv("use_self_consistent", "False") == "True",
+            self_consistent_n=int(os.getenv("self_consistent_n", 3)),
+            judge_chatbot=os.getenv("judge_chatbot", "gemini_flash_lite"),
+            use_mmr=os.getenv("use_mmr", "False") == "True",
+            mmr_lambda=float(os.getenv("mmr_lambda", 0.5)),
+            mmr_top_k=int(os.getenv("mmr_top_k", 5)),
+            min_rrf_score=float(os.getenv("min_rrf_score", 0.0)),
+            law_desc_cap=int(os.getenv("law_desc_cap", 600)),
+            max_applicable_laws=int(os.getenv("max_applicable_laws", 8)),
+            expand_abbreviations=os.getenv("expand_abbreviations", "True") == "True",
+            rrf_k=int(os.getenv("rrf_k", 60)),
         )
 
         # Graph configuration
@@ -264,6 +307,7 @@ class LegalGraphRAG:
             GlmChatbot,
             DeepSeekChatbot,
             GPT4OMiniChatbot,
+            GeminiChatbot,
         )
 
         model_map = {
@@ -274,9 +318,25 @@ class LegalGraphRAG:
             "glm4": GlmChatbot,
             "deepseek_v3": DeepSeekChatbot,
             "gpt4o_mini": GPT4OMiniChatbot,
+            "gemini_flash": GeminiChatbot,
+            "gemini_flash_lite": GeminiChatbot,
+        }
+
+        # Gemini model name mapping (SDK model IDs)
+        gemini_model_ids = {
+            "gemini_flash": "gemini-2.0-flash",
+            "gemini_flash_lite": "gemini-2.0-flash-lite",
         }
 
         model_class = model_map[self.config.model.model_name]
+
+        # Gemini uses its own SDK, not OpenAI-compatible
+        if self.config.model.model_name in gemini_model_ids:
+            return GeminiChatbot(
+                model_name=gemini_model_ids[self.config.model.model_name],
+                device=self.config.model.device,
+                api_key=self.config.model.api_key,
+            )
 
         # OpenAI-type models need special handling
         if self.config.model.model_name in ["deepseek_v3", "gpt4o_mini"]:
