@@ -45,19 +45,26 @@ def test_generate_prompt(mock_threadpool, mock_rag_system):
     assert "retrieved_facts" in data
 
 
-@patch("api.routes.generate_prompt", new_callable=AsyncMock)
 @patch("api.routes.run_in_threadpool", new_callable=AsyncMock)
-def test_analyze_civil(mock_threadpool, mock_generate_prompt, mock_rag_system):
+def test_analyze_civil(mock_threadpool, mock_rag_system):
     main.app.state.rag_system = mock_rag_system
-    # Setup prompt response
-    mock_prompt_response = MagicMock()
-    mock_prompt_response.prompt = "Test prompt"
-    mock_prompt_response.retrieved_laws = []
-    mock_prompt_response.retrieved_facts = []
-    mock_generate_prompt.return_value = mock_prompt_response
 
-    # Setup LLM response
-    mock_threadpool.return_value = '```json\n{"dispute_type": "Tranh chấp hợp đồng", "applicable_laws": ["Điều 1"], "resolution_direction": "Giải quyết"}\n```'
+    # Setup analyze_case return structure
+    mock_threadpool.return_value = [
+        {
+            "name": "Bị đơn",
+            "description": "Mô tả bên bị đơn",
+            "judge_result": {
+                "dispute_type": "Tranh chấp hợp đồng",
+                "applicable_laws": ["Điều 1"],
+                "resolution_direction": "Giải quyết",
+            },
+            "used_laws": [{"id": "Điều 1", "text": "Nội dung điều 1"}],
+            "used_facts": [{"fact": "Tình tiết 1", "similarity": 0.9}],
+            "confidence": {"overall": 0.85, "grade": "HIGH"},
+            "reasoning_trace": {"used_laws_count": 1},
+        }
+    ]
 
     response = client.post(
         "/analyze_civil",
@@ -66,5 +73,7 @@ def test_analyze_civil(mock_threadpool, mock_generate_prompt, mock_rag_system):
 
     assert response.status_code == 200
     data = response.json()
-    assert "analysis_result" in data
-    assert data["analysis_result"]["dispute_type"] == "Tranh chấp hợp đồng"
+    assert "results" in data
+    assert len(data["results"]) == 1
+    assert data["results"][0]["name"] == "Bị đơn"
+    assert data["results"][0]["judge_result"]["dispute_type"] == "Tranh chấp hợp đồng"
