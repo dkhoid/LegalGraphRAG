@@ -6,7 +6,6 @@ from core.judge.judge_civil import format_law, format_fact, judge_civil, judge_c
 
 
 class TestJudgeCivil(unittest.TestCase):
-
     def test_format_law_success(self):
         law_used = [
             {
@@ -28,7 +27,10 @@ class TestJudgeCivil(unittest.TestCase):
 
     def test_format_fact_success(self):
         facts = [
-            {"dispute": ["Property damage", "Insurance"], "description": "Car was damaged"},
+            {
+                "dispute": ["Property damage", "Insurance"],
+                "description": "Car was damaged",
+            },
             {"description": "No dispute"},
         ]
         expected = (

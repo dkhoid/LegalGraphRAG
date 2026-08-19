@@ -65,7 +65,11 @@ class OpenAIBaseModel(BaseModel):
         Returns:
             Model generated response text
         """
-        from core.utils.context import request_api_key, request_base_url, request_model_name
+        from core.utils.context import (
+            request_api_key,
+            request_base_url,
+            request_model_name,
+        )
 
         ctx_api_key = request_api_key.get()
         ctx_base_url = request_base_url.get()
@@ -78,7 +82,10 @@ class OpenAIBaseModel(BaseModel):
 
         if ctx_api_key or api_key or ctx_base_url:
             client = OpenAI(
-                api_key=effective_api_key, base_url=effective_base_url, timeout=30.0, max_retries=0
+                api_key=effective_api_key,
+                base_url=effective_base_url,
+                timeout=30.0,
+                max_retries=0,
             )
 
         try:

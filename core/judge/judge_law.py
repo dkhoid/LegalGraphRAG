@@ -6,7 +6,8 @@ from core.prompt import get_prompt
 def judge_law(chatbot, case_description, law):
     if isinstance(law, str):
         judge_res = chatbot.generate_response(
-            get_prompt("JUDGE_LAW_PROMPT1").format(law=law, case=case_description), max_length=128
+            get_prompt("JUDGE_LAW_PROMPT1").format(law=law, case=case_description),
+            max_length=128,
         )
         decision = judge_res.strip().split("\n")[-1].lower()
         if "true" in decision:

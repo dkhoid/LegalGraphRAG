@@ -1,17 +1,12 @@
 from typing import Dict, Any, Tuple, List
 from core.retriever.base_retriever import BaseRetriever
-from core.graph_construct.feature_graph import query_similar_nodes_naive, query_similar_laws_naive
+from core.utils.formatting import concat_feature_descriptions
+from core.graph_construct.graph_search import (
+    query_similar_nodes_naive,
+    query_similar_laws_naive,
+)
 from rank_bm25 import BM25Okapi
 from core.utils.rrf import reciprocal_rank_fusion
-
-
-def concat_feature_descriptions(description: Dict[str, Any]) -> str:
-    res = ""
-    res += "Parties Info: " + ", ".join(description.get("parties_info", [])) + ". "
-    res += "Dispute Acts: " + ", ".join(description.get("dispute_acts", [])) + ". "
-    res += "Subject Matter: " + ", ".join(description.get("subject_matter", [])) + ". "
-    res += "Fault and Evidence: " + ", ".join(description.get("fault_and_evidence", [])) + ". "
-    return res
 
 
 class VectorRetriever(BaseRetriever):

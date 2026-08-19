@@ -4,7 +4,6 @@ from core.preprocess.case_seg import segment_case_text_withname
 
 
 class TestCaseSeg(unittest.TestCase):
-
     def test_segment_case_text_withname_success(self):
         model = MagicMock()
         model.generate_response.side_effect = ["Segment 1", "Segment 2"]

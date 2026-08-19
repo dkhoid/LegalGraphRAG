@@ -4,7 +4,6 @@ from core.preprocess.get_features import get_features
 
 
 class TestGetFeatures(unittest.TestCase):
-
     def test_get_features_success(self):
         model = MagicMock()
         model.generate_response.return_value = 'Some text {"feature1": "value1"} more text'

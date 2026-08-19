@@ -3,15 +3,7 @@ from core.retriever.base_retriever import BaseRetriever
 from core.prompt import get_prompt
 from core.utils.rrf import reciprocal_rank_fusion
 from core.utils.legal_text import preprocess_for_retrieval
-
-
-def concat_feature_descriptions(description: Dict[str, Any]) -> str:
-    res = ""
-    res += "Parties Info: " + ", ".join(description.get("parties_info", [])) + ". "
-    res += "Dispute Acts: " + ", ".join(description.get("dispute_acts", [])) + ". "
-    res += "Subject Matter: " + ", ".join(description.get("subject_matter", [])) + ". "
-    res += "Fault and Evidence: " + ", ".join(description.get("fault_and_evidence", [])) + ". "
-    return res
+from core.utils.formatting import concat_feature_descriptions
 
 
 class GraphRetriever(BaseRetriever):
@@ -22,7 +14,7 @@ class GraphRetriever(BaseRetriever):
 
     def _retrieve_law_augment(self, case: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Augment retrieval by using LLM to extract facts and directly query laws"""
-        from core.graph_construct.feature_graph import query_similar_laws
+        from core.graph_construct.graph_search import query_similar_laws
 
         fact = case["description"][:1024]
         name = case["name"]
@@ -67,7 +59,7 @@ class GraphRetriever(BaseRetriever):
         query_text = concat_feature_descriptions(features)
 
         # Get query embedding
-        from core.graph_construct.feature_graph import get_embedding
+        from core.graph_construct.llm_utils import get_embedding
 
         query_embedding = get_embedding(query_text)
 
@@ -89,7 +81,7 @@ class GraphRetriever(BaseRetriever):
             logger.warning(
                 "Neo4j driver not initialized. Falling back to local in-memory graph search."
             )
-            from core.graph_construct.feature_graph import search_similar_nodes_direct
+            from core.graph_construct.graph_search import search_similar_nodes_direct
 
             top_k = retrieve_config.get("top_retrieve_top_k", 5)
             cases, laws = search_similar_nodes_direct(

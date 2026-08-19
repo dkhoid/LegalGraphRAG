@@ -4,7 +4,6 @@ from core.judge.judge_law import judge_law
 
 
 class TestJudgeLaw(unittest.TestCase):
-
     def test_judge_law_str_true(self):
         chatbot = MagicMock()
         chatbot.generate_response.return_value = "This is True and applicable."

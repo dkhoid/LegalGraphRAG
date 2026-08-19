@@ -4,7 +4,6 @@ from core.preprocess.preJudge import pre_judge
 
 
 class TestPreJudge(unittest.TestCase):
-
     def test_pre_judge_success(self):
         model = MagicMock()
         model.generate_response.return_value = (

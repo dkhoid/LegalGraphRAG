@@ -89,7 +89,11 @@ class InMemoryGraphDB:
             self.embeddings[node_type][node_id] = np.array(properties["embedding"])
 
     def add_edge(
-        self, source: str, target: str, relation_type: str, properties: Optional[Dict] = None
+        self,
+        source: str,
+        target: str,
+        relation_type: str,
+        properties: Optional[Dict] = None,
     ):
         """Add edge (relationship)"""
         if properties is None:

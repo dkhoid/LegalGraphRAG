@@ -29,7 +29,12 @@ def mock_data():
     law_to_dispute = [
         {
             "id": "1",
-            "items": [{"text": "Tội cố ý gây thương tích", "dispute": ["Cố ý gây thương tích"]}],
+            "items": [
+                {
+                    "text": "Tội cố ý gây thương tích",
+                    "dispute": ["Cố ý gây thương tích"],
+                }
+            ],
         }
     ]
     cases_db = [{"id": "case_1", "dispute": ["Cố ý gây thương tích"], "law": ["1"]}]
@@ -46,7 +51,7 @@ def test_vector_retriever_bm25_caching(mock_data):
 
     # First retrieve - should build index
     # Note: query_similar_nodes_naive will fail if no DB, so we mock it
-    import core.graph_construct.feature_graph as fg
+    import core.graph_construct.graph_search as fg
 
     original_func = fg.query_similar_nodes_naive
     original_laws_func = fg.query_similar_laws_naive
@@ -74,13 +79,13 @@ def test_graph_retriever_safe_parsing(mock_data):
     retriever = GraphRetriever(model)
 
     # We only test the safe parsing via _retrieve_law_augment
-    import core.graph_construct.feature_graph as fg
+    import core.graph_construct.graph_search as fg
 
     original_laws_func = fg.query_similar_laws
 
     # Track what is passed to query_similar_laws
     parsed_disputes = []
-    fg.query_similar_laws = lambda d, top_k: parsed_disputes.append(d) or [{"entry": "1"}]
+    fg.query_similar_laws = lambda d, top_k: (parsed_disputes.append(d) or [{"entry": "1"}])
 
     try:
         laws = retriever._retrieve_law_augment({"name": "Test", "description": "Fact"})

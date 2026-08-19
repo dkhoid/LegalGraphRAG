@@ -15,7 +15,6 @@ rag.cases_db = rag._load_cases_db()
 valid_cases = [c for c in rag.cases_db if c.get("law")]
 case = valid_cases[0]  # Lấy case đầu tiên
 case_input = {"fact": case["fact"], "name": ["Nguyên đơn", "Bị đơn"]}
-rag.config.retrieve.to_dict = lambda: {"method": "vector", "direct_retrieve_top_k": 3}
 vector_res = rag.analyze_case(case_input)
 
 vec_retrieved_laws = []

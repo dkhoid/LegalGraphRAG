@@ -25,7 +25,8 @@ class MockChatbot:
     """Minimal chatbot mock for testing judge functions without a real LLM."""
 
     def __init__(
-        self, response: str = '{"conditions": [{"id": 1, "met": true}], "applicable": true}'
+        self,
+        response: str = '{"conditions": [{"id": 1, "met": true}], "applicable": true}',
     ):
         self._response = response
 

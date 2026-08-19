@@ -5,7 +5,8 @@ from core.graph_construct.neo4j_manager import Neo4jManager
 
 class TestNeo4jManager(unittest.TestCase):
     @patch.dict(
-        "os.environ", {"NEO4J_URI": "bolt://fake", "NEO4J_USER": "u", "NEO4J_PASSWORD": "p"}
+        "os.environ",
+        {"NEO4J_URI": "bolt://fake", "NEO4J_USER": "u", "NEO4J_PASSWORD": "p"},
     )
     @patch("core.graph_construct.neo4j_manager.GraphDatabase")
     def test_init_success(self, mock_graphdb):

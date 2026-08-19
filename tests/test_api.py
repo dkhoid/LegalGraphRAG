@@ -24,17 +24,18 @@ def test_root_endpoint():
     assert response.headers["location"] == "/web/index.html"
 
 
-@patch("main.rag_system", new_callable=MagicMock)
-@patch("main.run_in_threadpool", new_callable=AsyncMock)
-def test_generate_prompt(mock_threadpool, mock_rag):
+@patch("api.routes.run_in_threadpool", new_callable=AsyncMock)
+def test_generate_prompt(mock_threadpool, mock_rag_system):
     # Setup mock returns for threadpool
+    main.app.state.rag_system = mock_rag_system
     mock_threadpool.side_effect = [
         [{"id": "case_1", "description": "Tình tiết vụ án 1"}],  # returned by query_similar_nodes
         [{"entry": "1", "description": "Điều 1"}],  # returned by query_similar_laws
     ]
 
     response = client.post(
-        "/generate_prompt", json={"fact": "Xin chào, tôi muốn hỏi về bồi thường", "top_k": 3}
+        "/generate_prompt",
+        json={"fact": "Xin chào, tôi muốn hỏi về bồi thường", "top_k": 3},
     )
 
     assert response.status_code == 200
@@ -44,11 +45,10 @@ def test_generate_prompt(mock_threadpool, mock_rag):
     assert "retrieved_facts" in data
 
 
-@patch("main.rag_system")
-@patch("main.generate_prompt", new_callable=AsyncMock)
-@patch("main.run_in_threadpool", new_callable=AsyncMock)
-def test_analyze_civil(mock_threadpool, mock_generate_prompt, mock_rag, mock_rag_system):
-    main.rag_system = mock_rag_system
+@patch("api.routes.generate_prompt", new_callable=AsyncMock)
+@patch("api.routes.run_in_threadpool", new_callable=AsyncMock)
+def test_analyze_civil(mock_threadpool, mock_generate_prompt, mock_rag_system):
+    main.app.state.rag_system = mock_rag_system
     # Setup prompt response
     mock_prompt_response = MagicMock()
     mock_prompt_response.prompt = "Test prompt"
@@ -60,7 +60,8 @@ def test_analyze_civil(mock_threadpool, mock_generate_prompt, mock_rag, mock_rag
     mock_threadpool.return_value = '```json\n{"dispute_type": "Tranh chấp hợp đồng", "applicable_laws": ["Điều 1"], "resolution_direction": "Giải quyết"}\n```'
 
     response = client.post(
-        "/analyze_civil", json={"fact": "Xin chào, tôi muốn hỏi về bồi thường", "top_k": 3}
+        "/analyze_civil",
+        json={"fact": "Xin chào, tôi muốn hỏi về bồi thường", "top_k": 3},
     )
 
     assert response.status_code == 200
