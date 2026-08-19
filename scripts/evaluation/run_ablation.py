@@ -326,6 +326,34 @@ EXPERIMENT_CONFIGS = [
             "max_judge_laws": 8,
         },
     },
+    {
+        "name": "Vector_Hybrid_Reranker",
+        "description": "Baseline + Reranker: Hybrid BM25 + Vector with CrossEncoder",
+        "retrieve": {
+            "method": "vector",
+            "top_retrieve": False,
+            "direct_retrieve": True,
+            "augment_retrieve": False,
+            "top_retrieve_top_k": 15,
+            "direct_retrieve_top_k": 15,
+            "max_judge_laws": 6,
+            "use_reranker": True,
+        },
+    },
+    {
+        "name": "Graph_Full_Reranker",
+        "description": "Graph RAG Full + Reranker",
+        "retrieve": {
+            "method": "graph",
+            "top_retrieve": True,
+            "direct_retrieve": True,
+            "augment_retrieve": True,
+            "top_retrieve_top_k": 10,
+            "direct_retrieve_top_k": 10,
+            "max_judge_laws": 6,
+            "use_reranker": True,
+        },
+    },
 ]
 
 
@@ -494,7 +522,7 @@ def build_markdown_report(all_results: List[Dict[str, Any]], output_path: str):
 
 
 def main():
-    eval_data_path = "./data/processed/tiny_eval.json"
+    eval_data_path = "./data/eval_tiny/cases_with_feature.json"
     output_dir = "./outputs/ablation"
     os.makedirs(output_dir, exist_ok=True)
 

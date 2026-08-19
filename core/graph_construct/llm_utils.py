@@ -50,7 +50,7 @@ def get_embedding(text):
 
     url = os.getenv("embedding_api_url", "http://localhost:11434/api/embed")
     model = os.getenv("embedding_model", "bge-m3")
-    api_key = os.getenv("OPENAI_API_KEY", os.getenv("api_key", ""))
+    api_key = os.getenv("EMBEDDING_API_KEY", os.getenv("OPENAI_API_KEY", os.getenv("api_key", "")))
 
     headers = {"Content-Type": "application/json"}
     if not text:

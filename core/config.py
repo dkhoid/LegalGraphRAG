@@ -147,8 +147,8 @@ class LegalGraphRAGConfig:
 
         # Model configuration
         model_config = ModelConfig(
-            model_name=os.getenv("model_name", "qwen3"),
-            device=os.getenv("device", "cuda:0"),
+            model_name=os.getenv("model_name", "gpt4o_mini"),
+            device=os.getenv("device", "cpu"),
             prompt_language=os.getenv("prompt_language", "en"),
             api_key=os.getenv("api_key"),
             base_url=os.getenv("base_url"),

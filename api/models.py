@@ -27,8 +27,15 @@ class GeneratePromptResponse(BaseModel):
     prompt: str
 
 
+class PartyAnalysisResult(BaseModel):
+    name: str = Field(description="Tên của bên (Nguyên đơn, Bị đơn)")
+    description: str = Field(description="Mô tả về bên này")
+    judge_result: Dict[str, Any] = Field(description="Kết quả phán quyết từ LLM")
+    used_laws: List[Dict[str, Any]] = Field(description="Các luật thực sự được áp dụng")
+    used_facts: List[Dict[str, Any]] = Field(description="Các tình tiết thực sự được dùng")
+    confidence: Dict[str, Any] = Field(description="Chi tiết độ tin cậy của AI")
+    reasoning_trace: Dict[str, Any] = Field(description="Logs hệ thống")
+
+
 class AnalyzeCivilResponse(BaseModel):
-    retrieved_laws: List[Dict[str, Any]]
-    retrieved_facts: List[Dict[str, Any]]
-    prompt: str
-    analysis_result: Dict[str, Any]
+    results: List[PartyAnalysisResult]

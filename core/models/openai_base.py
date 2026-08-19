@@ -32,18 +32,15 @@ class OpenAIBaseModel(BaseModel):
         super().__init__(model_name, device)
 
         # Get API key from environment variable, if not available use passed key
-        self.api_key = api_key or os.getenv(env_api_key_name)
-        if not self.api_key:
-            raise ValueError(
-                f"{env_api_key_name} API key not provided, please set {env_api_key_name} environment variable or pass api_key parameter"
-            )
-
+        self.api_key = api_key or os.getenv(env_api_key_name, "")
         self.base_url = base_url or default_base_url
         if not self.base_url:
             raise ValueError("base_url not provided")
 
-        self.client = OpenAI(
-            api_key=self.api_key, base_url=self.base_url, timeout=30.0, max_retries=0
+        self.client = (
+            OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=30.0, max_retries=0)
+            if self.api_key
+            else None
         )
 
     def generate_response(
@@ -80,7 +77,12 @@ class OpenAIBaseModel(BaseModel):
         effective_api_key = ctx_api_key or api_key or self.api_key
         effective_model = ctx_model_name or self.model_name
 
-        if ctx_api_key or api_key or ctx_base_url:
+        if not effective_api_key:
+            raise ValueError(
+                "Vui lòng cung cấp API Key trên giao diện hoặc cấu hình .env để tiếp tục."
+            )
+
+        if client is None or ctx_api_key or api_key or ctx_base_url:
             client = OpenAI(
                 api_key=effective_api_key,
                 base_url=effective_base_url,

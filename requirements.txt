@@ -27,3 +27,4 @@ pytest-cov>=4.0.0
 pre-commit>=3.3.0
 neo4j>=5.14.0
 rank_bm25
+sentence-transformers>=2.2.0

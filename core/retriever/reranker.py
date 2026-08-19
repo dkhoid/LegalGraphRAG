@@ -37,7 +37,7 @@ class CrossEncoderReranker:
     # - ms-marco-MiniLM-L-6-v2 : fast, English-centric but often ok for vi
     # - ms-marco-MiniLM-L-12-v2: slower, slightly better
     # - nreimers/mmarco-mMiniLMv2-L12-H384-v1: multilingual, recommended
-    DEFAULT_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    DEFAULT_MODEL = "nreimers/mmarco-mMiniLMv2-L12-H384-v1"
 
     def __init__(
         self,

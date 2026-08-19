@@ -138,7 +138,9 @@ def analyze_case(chatbot, case, law_to_dispute, cases_db, retrieve_config):
     from core.config import RetrieveConfig
 
     if isinstance(retrieve_config, dict):
-        retrieve_config = RetrieveConfig(**retrieve_config)
+        valid_keys = RetrieveConfig.__dataclass_fields__.keys()
+        filtered = {k: v for k, v in retrieve_config.items() if k in valid_keys}
+        retrieve_config = RetrieveConfig(**filtered)
 
     return analyze_case_pipeline(chatbot, case, law_to_dispute, cases_db, retrieve_config)
 

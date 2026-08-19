@@ -46,10 +46,7 @@ def _retrieve_and_rerank_laws(
             from core.retriever.reranker import get_reranker
 
             query_text = f"{item.get('name', '')} {item.get('description', '')}"
-            reranker = get_reranker(
-                model_name="cross-encoder/ms-marco-MiniLM-L-6-v2",
-                top_k=retrieve_config.reranker_top_k,
-            )
+            reranker = get_reranker(top_k=retrieve_config.reranker_top_k)
             retrieved_laws = reranker.rerank(query_text, retrieved_laws)
             original_retrieved_res["reranker"] = reranker.model_name
         except Exception as e:

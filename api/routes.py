@@ -74,42 +74,35 @@ async def analyze_civil(request: CaseRequest, req: Request):
         request_model_name.set(provider_conf["model_name"])
 
     try:
-        # Re-use generate_prompt logic, but call the function directly
-        # Wait, generate_prompt uses req.app.state, so we can just extract logic or pass req
-        # Let's call the function
-        prompt_response = await generate_prompt(request, req)
+        case_input = {"fact": request.fact, "name": ["Nguyên đơn", "Bị đơn"]}
+        results_list = await run_in_threadpool(rag_system.analyze_case, case_input)
 
-        raw_response = await run_in_threadpool(
-            rag_system.model.generate_response,
-            prompt_response.prompt,
-            DEFAULT_MAX_TOKENS,
-            DEFAULT_TEMPERATURE,
-            request.api_key,
-        )
+        parsed_results = []
+        for res in results_list:
+            judge_res = res.get("judge_result", {})
+            if isinstance(judge_res, str):
+                try:
+                    judge_res = json.loads(judge_res)
+                except json.JSONDecodeError:
+                    judge_res = {
+                        "dispute_type": "Không xác định",
+                        "applicable_laws": [],
+                        "resolution_direction": judge_res,
+                    }
 
-        try:
-            cleaned_response = raw_response.strip()
-            if cleaned_response.startswith("```json"):
-                cleaned_response = cleaned_response[7:]
-            if cleaned_response.startswith("```"):
-                cleaned_response = cleaned_response[3:]
-            if cleaned_response.endswith("```"):
-                cleaned_response = cleaned_response[:-3]
+            parsed_results.append(
+                {
+                    "name": res.get("name", "Unknown"),
+                    "description": res.get("description", ""),
+                    "judge_result": judge_res,
+                    "used_laws": res.get("used_laws", []),
+                    "used_facts": res.get("used_facts", []),
+                    "confidence": res.get("confidence", {}),
+                    "reasoning_trace": res.get("reasoning_trace", {}),
+                }
+            )
 
-            analysis_result = json.loads(cleaned_response.strip())
-        except json.JSONDecodeError:
-            analysis_result = {
-                "dispute_type": "Lỗi phân tích JSON",
-                "applicable_laws": [],
-                "resolution_direction": f"Mô hình không trả về JSON hợp lệ. Nội dung gốc: {raw_response[:200]}...",
-            }
-
-        return AnalyzeCivilResponse(
-            retrieved_laws=prompt_response.retrieved_laws,
-            retrieved_facts=prompt_response.retrieved_facts,
-            prompt=prompt_response.prompt,
-            analysis_result=analysis_result,
-        )
+        return AnalyzeCivilResponse(results=parsed_results)
     except HTTPException as e:
         raise e
     except Exception as e:

@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from core.LegalGraphRAG import LegalGraphRAG, LegalGraphRAGConfig
 
 
-def load_test_cases(datasets: str, datasets_path: str = "./datas") -> List[Dict[str, Any]]:
+def load_test_cases(datasets: str, datasets_path: str = "./data/eval_tiny") -> List[Dict[str, Any]]:
     case_file = os.path.join(datasets_path, "cases_with_feature.json")
 
     if not os.path.exists(case_file):
@@ -76,7 +76,7 @@ def run_evaluation(
     datasets: str = "vn_civil",
     dotenv_path: str = ".env",
     devices: Optional[List[str]] = None,
-    datasets_path: str = "./datas",
+    datasets_path: str = "./data/eval_tiny",
     build_graph: bool = True,
     force_rebuild: bool = False,
     limit: Optional[int] = None,
@@ -247,7 +247,7 @@ if __name__ == "__main__":
         "--datasets_path",
         type=str,
         default=None,
-        help="Path to datasets directory (default: ./datas)",
+        help="Path to datasets directory (default: ./data/eval_tiny)",
     )
     parser.add_argument(
         "--devices",
@@ -282,7 +282,7 @@ if __name__ == "__main__":
         datasets=args.datasets,
         dotenv_path=args.dotenv_path,
         devices=args.devices,
-        datasets_path=args.datasets_path if args.datasets_path else "./datas",
+        datasets_path=args.datasets_path if args.datasets_path else "./data/eval_tiny",
         build_graph=not args.no_build_graph,
         force_rebuild=args.force_rebuild,
         limit=args.limit,
