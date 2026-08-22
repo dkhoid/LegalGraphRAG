@@ -16,8 +16,8 @@ class TestJudgeCivil(unittest.TestCase):
             {"entry": "124", "description": "Another law."},
         ]
         expected = (
-            "Article 123 — Applicable issues: Contract breach, Compensation Claim. Content: This is a description.\n---\n"
-            "Article 124 — Applicable issues: . Content: Another law.\n---\n"
+            "Điều luật 123 — Vấn đề pháp lý liên quan: Contract breach, Compensation Claim. Nội dung: This is a description.\n---\n"
+            "Điều luật 124 — Vấn đề pháp lý liên quan: . Nội dung: Another law.\n---\n"
         )
         result = format_law(law_used)
         self.assertEqual(result, expected)
@@ -34,8 +34,8 @@ class TestJudgeCivil(unittest.TestCase):
             {"description": "No dispute"},
         ]
         expected = (
-            "Legal issue: Property damage, Insurance. Fact description: Car was damaged.\n"
-            "Legal issue: . Fact description: No dispute.\n"
+            "Vấn đề pháp lý: Property damage, Insurance. Tình tiết vụ án: Car was damaged.\n"
+            "Vấn đề pháp lý: . Tình tiết vụ án: No dispute.\n"
         )
         result = format_fact(facts)
         self.assertEqual(result, expected)
@@ -53,6 +53,17 @@ class TestJudgeCivil(unittest.TestCase):
         self.assertIn("Issue B", result)
         self.assertEqual(len(result), 2)
 
+    def test_judge_civil_with_think_tags(self):
+        chatbot = MagicMock()
+        chatbot.generate_response.return_value = (
+            "<think>Suy nghĩ về [hành vi trái pháp luật] và [lỗi]</think>\n"
+            "['Tranh chấp bồi thường', 'Tranh chấp hợp đồng']"
+        )
+        result = judge_civil(chatbot, [], [], "Some case")
+        self.assertIn("Tranh chấp bồi thường", result)
+        self.assertIn("Tranh chấp hợp đồng", result)
+        self.assertEqual(len(result), 2)
+
     def test_judge_civil_parsing_error(self):
         chatbot = MagicMock()
         # Malformed list format to trigger an exception during eval()
@@ -63,13 +74,18 @@ class TestJudgeCivil(unittest.TestCase):
 
     def test_judge_civil_all_success(self):
         chatbot = MagicMock()
-        expected_dict = {
+        model_output = {
             "dispute_type": ["Contract"],
             "law_article": ["123"],
             "resolution": {"liability": "Yes", "compensation": "1000"},
         }
+        expected_dict = {
+            "dispute_type": ["Contract"],
+            "law_article": ["Điều 123"],
+            "resolution": {"liability": "Yes", "compensation": "1000"},
+        }
         # Convert dict to JSON string block
-        chatbot.generate_response.return_value = "JSON output: " + json.dumps(expected_dict)
+        chatbot.generate_response.return_value = "JSON output: " + json.dumps(model_output)
 
         result = judge_civil_all(chatbot, [], [], "Some case")
         self.assertEqual(result, expected_dict)

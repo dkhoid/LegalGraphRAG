@@ -426,3 +426,55 @@ class TestJudgeLawSelfConsistent:
         result = self.judge(primary, "case", self._law(), n_samples=3, judge_chatbot=ErrorBot())
         # Falls back to primary → should succeed
         assert isinstance(result[0], bool)
+
+    def test_deepseek_r1_think_tags_in_batch_judge(self):
+        """Batch judge should strip <think>...</think> tags containing json-like characters."""
+        from core.judge.judge_law import judge_law_batch
+
+        response_with_think = (
+            "<think>\n"
+            "Analyzing case with condition {test: true} and {status: 'ok'}\n"
+            "</think>\n"
+            '```json\n{"applicable": true, "conditions": ["cond 1 met"]}\n```'
+        )
+        bot = MockChatbot(response_with_think)
+        applicable, reasoning = judge_law_batch(bot, "case", self._law())
+        assert applicable is True
+        assert "cond 1 met" in reasoning
+
+
+class TestJudgeChatbotRouter:
+    """Tests for _get_judge_chatbot routing in core/utils/util.py"""
+
+    def test_deepseek_router(self, monkeypatch):
+        from core.utils.util import _get_judge_chatbot, _judge_chatbot_cache
+        from core.models.openai.deepseek_v3 import DeepSeekChatbot
+
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "fake_deepseek_key")
+        _judge_chatbot_cache.clear()
+
+        bot = _get_judge_chatbot("deepseek_v3")
+        assert isinstance(bot, DeepSeekChatbot)
+        assert bot.base_url == "https://api.deepseek.com/v1"
+
+    def test_gemini_router(self, monkeypatch):
+        from core.utils.util import _get_judge_chatbot, _judge_chatbot_cache
+        from core.models.openai.gemini import GeminiChatbot
+
+        monkeypatch.setenv("GEMINI_API_KEY", "fake_gemini_key")
+        _judge_chatbot_cache.clear()
+
+        bot = _get_judge_chatbot("gemini_flash_lite")
+        assert isinstance(bot, GeminiChatbot)
+        assert bot.model_name == "gemini-2.0-flash-lite"
+
+    def test_openai_router(self, monkeypatch):
+        from core.utils.util import _get_judge_chatbot, _judge_chatbot_cache
+        from core.models.openai.gpt4o_mini import GPT4OMiniChatbot
+
+        monkeypatch.setenv("OPENAI_API_KEY", "fake_openai_key")
+        _judge_chatbot_cache.clear()
+
+        bot = _get_judge_chatbot("gpt4o_mini")
+        assert isinstance(bot, GPT4OMiniChatbot)
+        assert bot.base_url == "https://api.openai.com/v1"

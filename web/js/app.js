@@ -22,6 +22,112 @@ document.addEventListener('DOMContentLoaded', () => {
     const partyContentContainer = document.getElementById('partyContentContainer');
     const template = document.getElementById('partyContentTemplate');
 
+    const autoAnalyzeCheckbox = document.getElementById('autoAnalyzeCheckbox');
+    const presetGrid = document.getElementById('presetGrid');
+
+    // Preset Scenarios Data & Loader
+    const DEFAULT_PRESETS = [
+        {
+            id: "loan_default",
+            title: "Vay tiền có giấy tay & Lãi suất vượt trần 20%",
+            badge: "Vay tài sản",
+            icon: "banknote",
+            fact: "Ngày 15/03/2022, ông Nguyễn Văn A cho ông Trần Văn B vay 200.000.000 đồng để kinh doanh, có lập giấy biên nhận viết tay có chữ ký hai bên. Thời hạn vay là 12 tháng (đến 15/03/2023), thỏa thuận miệng lãi suất 2.5%/tháng (30%/năm). Đến hạn, ông B chỉ trả được 50.000.000 đồng tiền gốc và xin khất nợ nhiều lần. Đến tháng 06/2024, ông A yêu cầu ông B hoàn trả nợ gốc còn lại 150.000.000 đồng cùng toàn bộ tiền lãi theo thỏa thuận nhưng ông B chối bỏ, cho rằng lãi suất quá cao là vi phạm pháp luật nên không chịu trả bất kỳ khoản nào.",
+            tags: ["Điều 463 BLDS", "Điều 466 BLDS", "Điều 468 BLDS (Trần 20%)"]
+        },
+        {
+            id: "deposit_dispute",
+            title: "Tranh chấp Đặt cọc Mua bán Nhà đất (Phạt cọc)",
+            badge: "Đặt cọc & Nhà đất",
+            icon: "home",
+            fact: "Bà Lê Thị M ký hợp đồng đặt cọc 300.000.000 đồng với ông Hoàng Văn N để mua một thửa đất ở với giá trị 3.500.000.000 đồng. Hợp đồng đặt cọc quy định trong vòng 30 ngày kể từ 10/01/2024, hai bên phải ra văn phòng công chứng ký hợp đồng chuyển nhượng chính thức. Nếu bên bán từ chối bán thì phải đền bù gấp đôi số tiền cọc (600.000.000 đồng). Đến ngày hẹn, ông N thông báo có người khác trả giá cao hơn nên hủy giao dịch và chỉ đồng ý trả lại 300.000.000 đồng tiền cọc gốc mà không chịu phạt cọc.",
+            tags: ["Điều 328 BLDS (Đặt cọc)", "Điều 117 BLDS", "Án lệ 25/2018/AL"]
+        },
+        {
+            id: "inheritance_dispute",
+            title: "Tranh chấp Di sản Thừa kế & Di chúc miệng",
+            badge: "Thừa kế & QSDĐ",
+            icon: "scroll",
+            fact: "Ông Phan Văn H mất năm 2023, để lại di sản là ngôi nhà gắn liền với quyền sử dụng đất 200m2 mang tên ông. Ông H có 3 người con C, D và E (vợ ông H đã mất). Trước khi mất trong bệnh viện, ông H nói miệng để lại nhà cho con út E nhưng không lập văn bản và không có người làm chứng độc lập. Sau khi ông mất, E quản lý toàn bộ nhà đất và không chia cho các anh chị C, D. Anh C và chị D khởi kiện yêu cầu chia thừa kế theo pháp luật.",
+            tags: ["Điều 624 BLDS", "Điều 629 BLDS (Di chúc miệng)", "Điều 651 BLDS (Hàng 1)"]
+        },
+        {
+            id: "tort_damage",
+            title: "Bồi thường Thiệt hại Ngoài HĐ (Cây đổ đè ô tô)",
+            badge: "Bồi thường thiệt hại",
+            icon: "car",
+            fact: "Trong một cơn giông lốc vào chiều ngày 20/05/2024, cây xà cừ cổ thụ trong khuôn viên của Công ty X bị bật gốc gãy đổ đè bẹp xe ô tô của anh Vũ Văn K đang đậu hợp pháp tại bãi đỗ xe lề đường. Thiệt hại sửa chữa xe là 180.000.000 đồng. Anh K yêu cầu Công ty X bồi thường. Công ty X từ chối với lý do cây đổ do thiên tai bão lốc (sự kiện bất khả kháng) nên công ty không có lỗi.",
+            tags: ["Điều 584 BLDS", "Điều 585 BLDS", "Điều 604 BLDS (Cây cối)"]
+        }
+    ];
+
+    async function loadPresets() {
+        let presets = DEFAULT_PRESETS;
+        try {
+            const res = await fetch('/api/scenarios');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.scenarios && data.scenarios.length > 0) {
+                    presets = data.scenarios;
+                }
+            }
+        } catch (e) {
+            console.warn("Using default preset scenarios:", e);
+        }
+
+        if (!presetGrid) return;
+        presetGrid.innerHTML = '';
+
+        presets.forEach((preset, index) => {
+            const card = document.createElement('div');
+            card.className = 'preset-card';
+            card.dataset.id = preset.id;
+
+            const tagsHtml = (preset.tags || []).map(t => `<span class="preset-tag">• ${escapeHtml(t)}</span>`).join('');
+
+            card.innerHTML = `
+                <div class="preset-card-top">
+                    <span class="preset-badge">${escapeHtml(preset.badge || 'Án lệ')}</span>
+                    <i data-lucide="${preset.icon || 'file-text'}" style="width: 16px; height: 16px; color: var(--cta-color);"></i>
+                </div>
+                <div class="preset-name">${escapeHtml(preset.title)}</div>
+                <div class="preset-tags">${tagsHtml}</div>
+            `;
+
+            card.addEventListener('click', () => {
+                // Highlight selected card
+                document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+
+                // Fill fact input
+                factInput.value = preset.fact;
+
+                // If auto analyze is checked, trigger analysis immediately
+                if (autoAnalyzeCheckbox && autoAnalyzeCheckbox.checked) {
+                    analyzeBtn.click();
+                } else {
+                    factInput.focus();
+                }
+            });
+
+            presetGrid.appendChild(card);
+        });
+
+        if (window.lucide) lucide.createIcons();
+    }
+
+    loadPresets();
+
+    // Check if URL has ?fact= parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const factFromUrl = urlParams.get('fact');
+    if (factFromUrl) {
+        factInput.value = factFromUrl;
+        setTimeout(() => {
+            analyzeBtn.click();
+        }, 300);
+    }
+
     // API Key DOM
     const updateKeyBtn = document.getElementById('updateKeyBtn');
     const apiKeyInput = document.getElementById('apiKey');

@@ -74,8 +74,8 @@ class LegalGraphRAG:
 
         # Gemini model name mapping (SDK model IDs)
         gemini_model_ids = {
-            "gemini_flash": "gemini-3.5-flash",
-            "gemini_flash_lite": "gemini-3.5-flash-lite",
+            "gemini_flash": "gemini-2.0-flash",
+            "gemini_flash_lite": "gemini-2.0-flash-lite",
         }
 
         model_class = model_map[self.config.model.model_name]
@@ -248,8 +248,8 @@ class LegalGraphRAG:
                             "entry": text_id,
                             "description": item.get("text", ""),
                             "disputes": item.get("dispute", []),
-                            "judge_dep": str(item.get("judge_dep", [])),
-                            "related_laws": str(item.get("related_laws", [])),
+                            "judge_dep": item.get("judge_dep", []),
+                            "related_laws": item.get("related_laws", []),
                             "type": "law",
                         }
                     )
@@ -267,8 +267,8 @@ class LegalGraphRAG:
                         "entry": text_id,
                         "description": law.get("text", law.get("description", "")),
                         "disputes": law.get("dispute", []),
-                        "judge_dep": str(law.get("judge_dep", [])),
-                        "related_laws": str(law.get("related_laws", [])),
+                        "judge_dep": law.get("judge_dep", []),
+                        "related_laws": law.get("related_laws", []),
                         "type": "law",
                     }
                 )

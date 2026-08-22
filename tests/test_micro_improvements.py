@@ -5,6 +5,7 @@ Run with: pytest tests/test_micro_improvements.py -v
 
 import sys
 import os
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -192,8 +193,6 @@ class TestMMR:
 # ─────────────────────────────────────────────────────────────────────────────
 # M4/K1: Reranker Tests
 # ─────────────────────────────────────────────────────────────────────────────
-
-from unittest.mock import MagicMock, patch
 
 
 class TestCrossEncoderReranker:

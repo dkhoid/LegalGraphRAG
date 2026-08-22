@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LegalGraphRAG AI</title>
+    <meta name="description" content="LegalGraphRAG AI - Trợ lý pháp lý thông minh phân tích vụ án và tra cứu luật">
+    <meta property="og:title" content="LegalGraphRAG AI">
+    <meta property="og:description" content="Trợ lý Pháp lý thông minh sử dụng Hybrid Search và Graph Database">
+    <meta property="og:type" content="website">
+    <title>LegalGraphRAG AI - Trợ lý Pháp lý Thông minh</title>
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -22,13 +26,24 @@
                 <h1>LegalGraphRAG <span class="badge">AI</span></h1>
             </div>
             <p class="subtitle">Trợ lý Pháp lý thông minh sử dụng Hybrid Search (Vector + BM25)</p>
+
+            <div style="display: flex; justify-content: center; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                <a href="/web/index.html" style="color: #94a3b8; text-decoration: none; font-size: 0.82rem; padding: 4px 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9999px; background: rgba(30,41,59,0.5);">⚖️ Phân Tích Dân Sự</a>
+                <a href="/web/graph_view.html" style="color: #94a3b8; text-decoration: none; font-size: 0.82rem; padding: 4px 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9999px; background: rgba(30,41,59,0.5);">🕸️ Đồ Thị Tri Thức</a>
+                <a href="/docs" target="_blank" style="color: #94a3b8; text-decoration: none; font-size: 0.82rem; padding: 4px 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9999px; background: rgba(30,41,59,0.5);">🔌 API Docs</a>
+            </div>
         </header>
 
         <div class="chat-container" id="chat-container">
             <div class="message ai-message glass-message">
                 <div class="avatar"><i class="fa-solid fa-robot"></i></div>
                 <div class="content">
-                    <p>Xin chào! Tôi là trợ lý pháp lý AI được xây dựng dựa trên kiến trúc LegalGraphRAG. Hãy đặt câu hỏi về pháp luật, tôi sẽ tìm kiếm và tư vấn cho bạn.</p>
+                    <p>Xin chào! Tôi là trợ lý pháp lý AI được xây dựng dựa trên kiến trúc LegalGraphRAG. Hãy đặt câu hỏi về pháp luật hoặc chọn câu hỏi mẫu bên dưới:</p>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">
+                        <button class="quick-chip" style="background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">💰 Lãi suất vay theo BLDS 2015 tối đa bao nhiêu?</button>
+                        <button class="quick-chip" style="background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">🏡 Quy định về phạt cọc khi hủy mua nhà đất?</button>
+                        <button class="quick-chip" style="background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">📜 Di chúc miệng có giá trị pháp lý khi nào?</button>
+                    </div>
                 </div>
             </div>
         </div>

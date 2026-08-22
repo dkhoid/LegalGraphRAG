@@ -25,6 +25,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Handle Quick Chip Clicks
+    document.querySelectorAll('.quick-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const query = chip.textContent.replace(/^[^\w\s\d]+/, '').trim();
+            userInput.value = query;
+            chatForm.dispatchEvent(new Event('submit'));
+        });
+    });
+
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = userInput.value.trim();

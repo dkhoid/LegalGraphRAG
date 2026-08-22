@@ -143,7 +143,7 @@ class InMemoryGraphDB:
     def find_similar_nodes(
         self, query_embedding: np.ndarray, node_type: str, top_k: int = 5
     ) -> List[Dict]:
-        """Find most similar nodes based on vector similarity"""
+        """Find most similar nodes based on vector similarity (V12: Vectorized/ANN)"""
         if node_type not in self.embeddings:
             return []
 
@@ -159,27 +159,44 @@ class InMemoryGraphDB:
         if len(index_data["vectors"]) == 0:
             return []
 
-        query_vec = np.array(query_embedding).flatten()
-        vectors = index_data["vectors"]
+        query_vec = np.array(query_embedding, dtype=np.float32).flatten()
+        vectors = np.array(index_data["vectors"], dtype=np.float32)
 
-        # Calculate all similarities
-        similarities = []
-        for i, vec in enumerate(vectors):
-            sim = self.cosine_similarity(query_vec, vec)
-            similarities.append((index_data["ids"][i], sim))
+        # Fast vectorized matrix cosine similarity (O(1) loop in C/NumPy instead of Python loop)
+        try:
+            q_norm = np.linalg.norm(query_vec)
+            if q_norm == 0:
+                return []
+            v_norms = np.linalg.norm(vectors, axis=1)
+            v_norms[v_norms == 0] = 1e-10
+            sims = np.dot(vectors, query_vec) / (v_norms * q_norm)
 
-        # Sort and return top_k
-        similarities.sort(key=lambda x: x[1], reverse=True)
+            top_indices = np.argsort(-sims)[:top_k]
+            results = []
+            for idx in top_indices:
+                node_id = index_data["ids"][idx]
+                node_data = self.get_node(node_id)
+                if node_data:
+                    results.append({"id": node_id, "similarity": float(sims[idx]), **node_data})
+            return results
+        except Exception:
+            # Fallback to individual similarities
+            similarities = []
+            for i, vec in enumerate(vectors):
+                sim = self.cosine_similarity(query_vec, vec)
+                similarities.append((index_data["ids"][i], sim))
 
-        results = []
-        for node_id, similarity in similarities[:top_k]:
-            node_data = self.get_node(node_id)
-            if node_data:
-                result = {"id": node_id, "similarity": similarity}
-                result.update(node_data)
-                results.append(result)
+            similarities.sort(key=lambda x: x[1], reverse=True)
 
-        return results
+            results = []
+            for node_id, similarity in similarities[:top_k]:
+                node_data = self.get_node(node_id)
+                if node_data:
+                    result = {"id": node_id, "similarity": similarity}
+                    result.update(node_data)
+                    results.append(result)
+
+            return results
 
     def compute_pagerank(self) -> Dict[str, float]:
         """Compute PageRank"""
@@ -217,7 +234,11 @@ class InMemoryGraphDB:
             return {}
 
     def save(self, filepath: str):
-        """Save graph data to file"""
+        """Save graph data to file with HMAC signature (V14)"""
+        import hmac
+
+        secret = os.getenv("GRAPH_DB_SECRET", "legalgraphrag_internal_key").encode("utf-8")
+
         data = {
             "graph": self.graph,
             "nodes_data": self.nodes_data,
@@ -235,6 +256,14 @@ class InMemoryGraphDB:
                 return
             with _open(temp_filepath, "wb") as f:
                 pickle.dump(data, f)
+
+            # V14: Create HMAC signature file alongside
+            with open(temp_filepath, "rb") as f:
+                content = f.read()
+            sig = hmac.new(secret, content, "sha256").hexdigest()
+            with open(f"{filepath}.sig", "w") as f:
+                f.write(sig)
+
             # Dùng os.replace để ghi đè (atomic operation)
             if os and hasattr(os, "replace"):
                 os.replace(temp_filepath, filepath)
@@ -251,10 +280,31 @@ class InMemoryGraphDB:
                 print(f"Error saving graph data: {e}")
 
     def load(self, filepath: str):
-        """Load graph data from file"""
+        """Load graph data from file with HMAC verification (V14)"""
         if not os.path.exists(filepath):
             print(f"File does not exist: {filepath}")
             return
+
+        import hmac
+
+        secret = os.getenv("GRAPH_DB_SECRET", "legalgraphrag_internal_key").encode("utf-8")
+        sig_path = f"{filepath}.sig"
+
+        if os.path.exists(sig_path):
+            try:
+                with open(filepath, "rb") as f:
+                    content = f.read()
+                with open(sig_path, "r") as f:
+                    expected_sig = f.read().strip()
+                actual_sig = hmac.new(secret, content, "sha256").hexdigest()
+                if not hmac.compare_digest(actual_sig, expected_sig):
+                    raise ValueError(
+                        f"Integrity check failed for {filepath}! Potential file tampering."
+                    )
+            except ValueError as ve:
+                raise ve
+            except Exception as e:
+                print(f"Warning: Signature check encountered error: {e}")
 
         with open(filepath, "rb") as f:
             data = pickle.load(f)

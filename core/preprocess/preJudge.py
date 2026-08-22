@@ -1,3 +1,5 @@
+import ast
+import json
 from core.prompt import get_prompt
 
 
@@ -8,7 +10,15 @@ def pre_judge(model, case) -> list:
         # Attempt to parse response as a Python list
         first_bracket = response.find("[")
         last_bracket = response.rfind("]")
-        candidates = eval(response[first_bracket : last_bracket + 1])
+        if first_bracket != -1 and last_bracket > first_bracket:
+            list_str = response[first_bracket : last_bracket + 1]
+            try:
+                candidates = json.loads(list_str)
+            except Exception:
+                candidates = ast.literal_eval(list_str)
+        else:
+            candidates = []
+
         if isinstance(candidates, list) and all(isinstance(item, str) for item in candidates):
             return candidates[:3]
         else:

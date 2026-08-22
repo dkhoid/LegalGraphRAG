@@ -65,12 +65,18 @@ class CrossEncoderReranker:
                 "Install with: pip install sentence-transformers"
             ) from exc
 
-    def rerank(self, query: str, laws: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def rerank(
+        self,
+        query: str,
+        laws: List[Dict[str, Any]],
+        top_k: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
         """Score and reorder a list of law dicts by relevance to query.
 
         Args:
             query: The case description / defendant feature text.
             laws: List of law dicts, each must have a "description" or "text" key.
+            top_k: Optional override for the number of laws to return.
 
         Returns:
             Top-K laws ordered by cross-encoder score (best first).
@@ -88,8 +94,9 @@ class CrossEncoderReranker:
         # Attach score for debugging, then sort
         scored = sorted(zip(scores, laws), key=lambda x: float(x[0]), reverse=True)
 
+        k_limit = top_k if top_k is not None else self.top_k
         result = []
-        for score, law in scored[: self.top_k]:
+        for score, law in scored[:k_limit]:
             law = dict(law)  # avoid mutating original
             law["_rerank_score"] = round(float(score), 4)
             result.append(law)
@@ -113,4 +120,6 @@ def get_reranker(
     global _default_reranker
     if _default_reranker is None or _default_reranker.model_name != model_name:
         _default_reranker = CrossEncoderReranker(model_name=model_name, top_k=top_k)
+    else:
+        _default_reranker.top_k = top_k
     return _default_reranker

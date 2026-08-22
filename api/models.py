@@ -39,3 +39,17 @@ class PartyAnalysisResult(BaseModel):
 
 class AnalyzeCivilResponse(BaseModel):
     results: List[PartyAnalysisResult]
+
+
+class GraphInspectRequest(BaseModel):
+    query: str = Field(
+        ..., max_length=5000, description="Câu hỏi hoặc tình tiết vụ án cần trực quan hóa đồ thị"
+    )
+    top_k: int = Field(5, ge=1, le=20, description="Số lượng nút tối đa cần lấy")
+
+
+class GraphInspectResponse(BaseModel):
+    query: str
+    nodes: List[Dict[str, Any]]
+    edges: List[Dict[str, Any]]
+    stats: Dict[str, Any]

@@ -23,10 +23,8 @@ def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
             }
         )
 
-    cluster_ids = rerank_clusters(model, clusters, query_text)
-    cluster_ids = [c for c in cluster_ids if 0 <= c and c < len(clusters)]
-    if not cluster_ids:
-        cluster_ids = [0]
+    # V3 fix: Use top clusters by similarity directly rather than LLM reranking
+    cluster_ids = list(range(min(2, len(clusters))))
 
     neighbors = []
     for cluster_id in cluster_ids[:2]:
@@ -37,8 +35,8 @@ def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
         cluster_cases = []
         for node_id, node_info in db.nodes_data.items():
             if node_info["type"] == "Cases":
-                # Check if there is a BELONGS_TO edge pointing to this cluster
-                neighbors_list = db.get_neighbors(node_id, "BELONGS_TO")
+                # Check if there is a BELONGS_TO_CLUSTER edge pointing to this cluster
+                neighbors_list = db.get_neighbors(node_id, "BELONGS_TO_CLUSTER")
                 if cluster_node_id in neighbors_list:
                     node_data = node_info["data"].copy()
                     node_data["id"] = node_id
@@ -55,8 +53,6 @@ def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
         case_similarities.sort(key=lambda x: x[1], reverse=True)
 
         for case_data, similarity in case_similarities[:top_k]:
-            if similarity < 0.55:
-                continue
             neighbors.append(
                 {
                     "id": case_data["id"],
@@ -71,7 +67,15 @@ def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):
     neighbors = sorted(neighbors, key=lambda x: x["similarity"], reverse=True)
     for ids, neighbor in enumerate(neighbors):
         neighbor["rank"] = ids + 1
-    neighbors = rerank(model, query_text, neighbors)
+
+    # V3: Use cross-encoder if available, or keep cosine ranking (no LLM call)
+    try:
+        from core.retriever.reranker import get_reranker
+
+        reranker = get_reranker(top_k=len(neighbors))
+        neighbors = reranker.rerank(query_text, neighbors)
+    except Exception:
+        pass
 
     cases = []
     laws = []
@@ -108,8 +112,6 @@ def search_similar_nodes_direct(model, query_embedding, query_text, top_k=5):
 
     neighbors = []
     for record in neighbor_results:
-        if record["similarity"] < 0.55:
-            continue
         neighbors.append(
             {
                 "id": record["id"],
@@ -124,7 +126,15 @@ def search_similar_nodes_direct(model, query_embedding, query_text, top_k=5):
     neighbors = sorted(neighbors, key=lambda x: x["similarity"], reverse=True)
     for ids, neighbor in enumerate(neighbors):
         neighbor["rank"] = ids + 1
-    neighbors = rerank(model, query_text, neighbors)
+
+    # V3: Use cross-encoder if available, or keep cosine ranking (no LLM call)
+    try:
+        from core.retriever.reranker import get_reranker
+
+        reranker = get_reranker(top_k=len(neighbors))
+        neighbors = reranker.rerank(query_text, neighbors)
+    except Exception:
+        pass
 
     cases = []
     laws = []
@@ -313,7 +323,12 @@ def query_similar_nodes(model, query_text, retrieve_config):
     add_to_rrf(bm25_laws)
 
     sorted_law_ids = sorted(rrf_scores.keys(), key=lambda lid: rrf_scores[lid], reverse=True)
-    result_laws = [law_dict[lid] for lid in sorted_law_ids]
+    fused_laws = []
+    for lid in sorted_law_ids:
+        item = law_dict[lid].copy()
+        item["_rrf_score"] = rrf_scores[lid]
+        fused_laws.append(item)
+    result_laws = fused_laws
 
     original_retrieved_res = {
         "top": {
@@ -351,8 +366,6 @@ def query_similar_laws_naive(query_text, top_k=1):
             results = session.run(vector_query, top_k=top_k, query_embedding=query_embedding)
             for record in results:
                 score = record["score"]
-                if score < 0.55:
-                    continue
                 law = record["law"]
                 entry = law.get("entry")
                 if entry is not None and entry not in seen_law_ids:
@@ -366,6 +379,7 @@ def query_similar_laws_naive(query_text, top_k=1):
                             "judge_dep": law.get("judge_dep", []),
                             "related_laws": law.get("related_laws", []),
                             "similarity": score,
+                            "_embedding": law.get("embedding"),
                         }
                     )
         except Exception as e:

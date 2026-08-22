@@ -74,37 +74,21 @@ def build_relationships():
     """
     db = GraphDBManager.get_db()
 
-    # Remove Law nodes with entry <= 101 (general law provisions not relevant to cases) BEFORE building relationships
-    nodes_to_delete = []
-    for node_id, node_info in db.nodes_data.items():
-        if node_info["type"] == "Laws":
-            entry = node_info["data"].get("entry")
-            if entry is not None and str(entry).isdigit() and int(entry) <= 101:
-                nodes_to_delete.append(node_id)
-
-    if nodes_to_delete:
-        print(
-            f"Removing {len(nodes_to_delete)} Law nodes with entry <= 101 and their relationships"
-        )
-        for node_id in nodes_to_delete:
-            db.graph.remove_node(node_id)
-            del db.nodes_data[node_id]
-            # Remove from embeddings index
-            for node_type in db.embeddings:
-                if node_id in db.embeddings[node_type]:
-                    del db.embeddings[node_type][node_id]
-        print(f"Successfully removed {len(nodes_to_delete)} Law nodes.")
-
     # Create Case-to-Law relationships (based on entry matching)
     case_nodes = db.get_nodes_by_type("Cases")
 
-    # Build lookup for O(1) matching
+    # Build lookup for O(1) matching with prefix normalization
     law_nodes_by_entry = {}
     for node_id, node_info in db.nodes_data.items():
         if node_info["type"] == "Laws":
             entry_val = node_info["data"].get("entry")
             if entry_val is not None:
-                law_nodes_by_entry[str(entry_val)] = node_id
+                e_str = str(entry_val).strip()
+                law_nodes_by_entry[e_str] = node_id
+                if e_str.startswith("zalo_"):
+                    law_nodes_by_entry[e_str.replace("zalo_", "")] = node_id
+                else:
+                    law_nodes_by_entry[f"zalo_{e_str}"] = node_id
 
     for case_node in tqdm(case_nodes, desc="Linking cases to laws"):
         case_id = case_node["id"]
@@ -118,8 +102,14 @@ def build_relationships():
             if not law_entry_str:
                 continue
 
-            if law_entry_str in law_nodes_by_entry:
-                db.add_edge(case_id, law_nodes_by_entry[law_entry_str], "RELATES_TO_LAW")
+            matched_node = (
+                law_nodes_by_entry.get(law_entry_str)
+                or law_nodes_by_entry.get(law_entry_str.replace("zalo_", ""))
+                or law_nodes_by_entry.get(f"zalo_{law_entry_str}")
+            )
+
+            if matched_node:
+                db.add_edge(case_id, matched_node, "RELATES_TO_LAW")
             else:
                 # Fuzzy match: Gather all candidates instead of picking the first one randomly
                 candidates = []
@@ -177,13 +167,15 @@ def build_relationships():
     # Create Law-to-Issue relationships (based on issue description matching)
     law_nodes = db.get_nodes_by_type("Laws")
 
-    # Build lookup for O(1) exact matching
+    # Build lookup for O(1) exact and case-insensitive matching
     dispute_nodes_by_desc = {}
     for node_id, node_info in db.nodes_data.items():
         if node_info["type"] == "Disputes":
             desc_val = node_info["data"].get("description")
             if desc_val:
-                dispute_nodes_by_desc[desc_val] = node_id
+                desc_str = str(desc_val).strip()
+                dispute_nodes_by_desc[desc_str] = node_id
+                dispute_nodes_by_desc[desc_str.lower()] = node_id
 
     for law_node in tqdm(law_nodes, desc="Linking laws to crimes"):
         law_id = law_node["id"]
@@ -193,23 +185,34 @@ def build_relationships():
             continue
 
         for dispute_desc in dispute_descriptions:
+            d_str = str(dispute_desc).strip()
+            d_lower = d_str.lower()
+            if not d_str:
+                continue
+
             # Check if relationship already exists
             existing_neighbors = db.get_neighbors(law_id, "RELATED_DISPUTE")
             if existing_neighbors:
                 found = False
                 for dispute_id in existing_neighbors:
                     dispute_data = db.get_node(dispute_id)
-                    if dispute_data and dispute_data.get("description") == dispute_desc:
+                    if (
+                        dispute_data
+                        and str(dispute_data.get("description", "")).strip().lower() == d_lower
+                    ):
                         found = True
                         break
                 if found:
                     continue
 
-            # Attempt exact match using O(1) lookup
-            if dispute_desc in dispute_nodes_by_desc:
+            # Attempt exact / case-insensitive match using O(1) lookup
+            target_dispute_id = dispute_nodes_by_desc.get(d_str) or dispute_nodes_by_desc.get(
+                d_lower
+            )
+            if target_dispute_id:
                 db.add_edge(
                     law_id,
-                    dispute_nodes_by_desc[dispute_desc],
+                    target_dispute_id,
                     "RELATED_DISPUTE",
                     {"match_type": "exact"},
                 )
@@ -218,8 +221,8 @@ def build_relationships():
             # Attempt fuzzy match if exact match failed
             for node_id, node_info in db.nodes_data.items():
                 if node_info["type"] == "Disputes":
-                    desc = node_info["data"].get("description", "")
-                    if desc and dispute_desc and (dispute_desc in desc or desc in dispute_desc):
+                    desc = str(node_info["data"].get("description", "")).strip().lower()
+                    if desc and d_lower and (d_lower in desc or desc in d_lower):
                         db.add_edge(
                             law_id,
                             node_id,
@@ -228,30 +231,8 @@ def build_relationships():
                         )
                         break
 
-    # Remove Law nodes with entry <= 101 (general law provisions not relevant to cases)
-    nodes_to_delete = []
-    for node_id, node_info in db.nodes_data.items():
-        if node_info["type"] == "Laws":
-            entry = node_info["data"].get("entry")
-            if entry is not None and str(entry).isdigit() and int(entry) <= 101:
-                nodes_to_delete.append(node_id)
 
-    node_count = len(nodes_to_delete)
-    print(f"Removing {node_count} Law nodes with entry <= 101 and their relationships")
-
-    for node_id in nodes_to_delete:
-        db.graph.remove_node(node_id)
-        del db.nodes_data[node_id]
-        # Remove from embeddings index
-        for node_type in db.embeddings:
-            if node_id in db.embeddings[node_type]:
-                del db.embeddings[node_type][node_id]
-
-    deleted_count = len(nodes_to_delete)
-    print(f"Successfully removed {deleted_count} Law nodes and their relationships")
-
-
-def run_knn(top_k=3):
+def run_knn(top_k=5):
     db = GraphDBManager.get_db()
 
     # Get all Cases nodes
@@ -475,13 +456,34 @@ def construct_feature_graph(model, nodes_data):
 
     db = GraphDBManager.get_db()
 
-    print("Attempting to recover generated embeddings from memory cache...")
+    print("Attempting to recover generated embeddings from memory cache or Neo4j Aura...")
     try:
         cache_by_desc = {}
         for nid, c_node in db.nodes_data.items():
             c_data = c_node.get("data", {})
             if "description" in c_data and "embedding" in c_data:
                 cache_by_desc[c_data["description"]] = c_data["embedding"]
+
+        # If in-memory graph is empty, pull existing embeddings directly from Neo4j Aura
+        if len(cache_by_desc) < 100:
+            try:
+                from core.graph_construct.neo4j_manager import neo4j_manager
+
+                if neo4j_manager.driver:
+                    print("Fetching pre-computed embeddings from Neo4j Aura...")
+                    with neo4j_manager.driver.session() as session:
+                        for label in ["Cases", "Laws", "Disputes"]:
+                            res = session.run(
+                                f"MATCH (n:{label}) WHERE n.embedding IS NOT NULL AND n.description IS NOT NULL "
+                                f"RETURN n.description AS description, n.embedding AS embedding"
+                            )
+                            for record in res:
+                                d = record["description"]
+                                e = record["embedding"]
+                                if d and e:
+                                    cache_by_desc[d] = e
+            except Exception as e:
+                print("Neo4j embedding cache fetch warning:", e)
 
         recovered = 0
         for k in ["case", "law", "dispute"]:
@@ -490,7 +492,7 @@ def construct_feature_graph(model, nodes_data):
                 if desc and desc in cache_by_desc:
                     node["embedding"] = cache_by_desc[desc]
                     recovered += 1
-        print(f"Successfully recovered {recovered} embeddings!")
+        print(f"Successfully recovered {recovered} embeddings from cache!")
 
         del cache_by_desc
     except Exception as e:
@@ -523,7 +525,13 @@ def construct_feature_graph(model, nodes_data):
             i, node = item
             if node.get("embedding") is not None:
                 return i, node["id"], node["embedding"]
-            emb = get_embedding(node.get("description") or "")
+            desc = node.get("description") or ""
+            entry = node.get("entry")
+            if entry and desc and not desc.startswith(f"Điều {entry}"):
+                text_to_embed = f"Điều {entry}: {desc}"
+            else:
+                text_to_embed = desc
+            emb = get_embedding(text_to_embed)
             return i, node["id"], emb
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
@@ -549,7 +557,7 @@ def construct_feature_graph(model, nodes_data):
     build_relationships()
 
     # Run KNN and clustering
-    run_knn(top_k=3)
+    run_knn(top_k=5)
     create_clusters(model)
 
     # Lưu file pkl trước khi sync sang Neo4j

@@ -45,6 +45,7 @@ def compute_confidence(
     retrieved_laws: list,
     used_laws: list,
     retrieved_facts: list,
+    parsing_failures: int = 0,
 ) -> ConfidenceResult:
     """Compute confidence from pipeline signals without calling an LLM.
 
@@ -53,11 +54,14 @@ def compute_confidence(
     - law_applicability (40%): Most diagnostic – if the judge rejects all laws,
       something is likely wrong with the query or data.
     - has_evidence (30%): Binary signal that we have concrete grounding for output.
+    - parsing_failures penalty: Deducts up to 0.25 when batch judge parsing failed.
+    - all_rejected penalty: Deducts 0.15 when retrieved laws were found but all rejected.
 
     Args:
         retrieved_laws: All laws returned by the retriever.
         used_laws: Laws accepted by judge_law (subset of retrieved_laws).
         retrieved_facts: All case facts returned by the retriever.
+        parsing_failures: Number of LLM parsing failures encountered during judging.
 
     Returns:
         ConfidenceResult with all fields populated.
@@ -74,7 +78,13 @@ def compute_confidence(
     law_applicability = len(used_laws) / len(retrieved_laws) if retrieved_laws else 0.0
     has_evidence = 1.0 if (used_laws and retrieved_facts) else 0.0
 
-    overall = retrieval_quality * 0.3 + law_applicability * 0.4 + has_evidence * 0.3
+    raw_overall = retrieval_quality * 0.3 + law_applicability * 0.4 + has_evidence * 0.3
+
+    # Penalties
+    parse_penalty = min(parsing_failures * 0.05, 0.25)
+    all_rejected_penalty = 0.15 if (retrieved_laws and not used_laws) else 0.0
+
+    overall = max(0.0, min(1.0, raw_overall - parse_penalty - all_rejected_penalty))
 
     grade: Literal["HIGH", "MEDIUM", "LOW"] = (
         "HIGH" if overall > 0.75 else "MEDIUM" if overall > 0.45 else "LOW"

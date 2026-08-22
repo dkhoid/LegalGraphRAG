@@ -41,7 +41,7 @@ def mock_data():
     return case, law_to_dispute, cases_db
 
 
-def test_vector_retriever_bm25_caching(mock_data):
+def test_vector_retriever_bm25_caching(mock_data, monkeypatch):
     case, law_to_dispute, cases_db = mock_data
     model = MockModel()
     retriever = VectorRetriever(model)
@@ -49,28 +49,22 @@ def test_vector_retriever_bm25_caching(mock_data):
     # BM25 should be None initially
     assert retriever._bm25 is None
 
-    # First retrieve - should build index
-    # Note: query_similar_nodes_naive will fail if no DB, so we mock it
-    import core.graph_construct.graph_search as fg
+    # Patch naive search functions on vector_retriever module
+    import core.retriever.vector_retriever as vr
 
-    original_func = fg.query_similar_nodes_naive
-    original_laws_func = fg.query_similar_laws_naive
+    monkeypatch.setattr(
+        vr, "query_similar_nodes_naive", lambda m, q, top_k: [{"caseId": "case_1", "id": "node_1"}]
+    )
+    monkeypatch.setattr(vr, "query_similar_laws_naive", lambda q, top_k: [{"entry": "1"}])
 
-    fg.query_similar_nodes_naive = lambda m, q, top_k: [{"caseId": "case_1", "id": "node_1"}]
-    fg.query_similar_laws_naive = lambda q, top_k: [{"entry": "1"}]
+    retriever.retrieve(case, law_to_dispute, cases_db)
+    # BM25 should now be built
+    assert retriever._bm25 is not None
 
-    try:
-        retriever.retrieve(case, law_to_dispute, cases_db)
-        # BM25 should now be built
-        assert retriever._bm25 is not None
-
-        # Second retrieve - should use cached
-        old_bm25 = retriever._bm25
-        retriever.retrieve(case, law_to_dispute, cases_db)
-        assert retriever._bm25 is old_bm25  # Same instance
-    finally:
-        fg.query_similar_nodes_naive = original_func
-        fg.query_similar_laws_naive = original_laws_func
+    # Second retrieve - should use cached
+    old_bm25 = retriever._bm25
+    retriever.retrieve(case, law_to_dispute, cases_db)
+    assert retriever._bm25 is old_bm25  # Same instance
 
 
 def test_graph_retriever_safe_parsing(mock_data):

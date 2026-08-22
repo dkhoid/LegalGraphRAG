@@ -1,4 +1,4 @@
-"""Unified import interface for prompt module — English only"""
+"""Unified import interface for Vietnamese legal prompts module"""
 
 # Preprocess prompts
 from .preprocess import (
@@ -56,12 +56,12 @@ _PROMPTS = {
 
 
 def set_prompt_language(language: str) -> None:
-    """Kept for backward compatibility. Language is now always English."""
+    """Kept for backward compatibility."""
     pass
 
 
 def get_prompt(name: str, language: str = None) -> str:
-    """Return a prompt by name. Always returns English prompts."""
+    """Return a prompt by name."""
     try:
         return _PROMPTS[name]
     except KeyError as exc:

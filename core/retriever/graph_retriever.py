@@ -56,18 +56,22 @@ class GraphRetriever(BaseRetriever):
             }
 
         features = case.get("feature", {})
-        query_text = concat_feature_descriptions(features)
+        if isinstance(features, dict) and features:
+            query_text = concat_feature_descriptions(features)
+        else:
+            query_text = case.get("description", "") or case.get("fact", "")
 
         # Query expansion: append dispute_acts and subject_matter from feature extraction
         # This dramatically improves BM25 and embedding recall for domain-specific terms
         # e.g. 'làm thêm giờ', 'tiền lương', 'sa thải' are critical for law matching
         _expansion_parts: List[str] = []
-        for field in ("dispute_acts", "subject_matter", "parties_info"):
-            val = features.get(field, [])
-            if isinstance(val, list):
-                _expansion_parts.extend([str(v) for v in val if v])
-            elif isinstance(val, str) and val:
-                _expansion_parts.append(val)
+        if isinstance(features, dict):
+            for field in ("dispute_acts", "subject_matter", "parties_info"):
+                val = features.get(field, [])
+                if isinstance(val, list):
+                    _expansion_parts.extend([str(v) for v in val if v])
+                elif isinstance(val, str) and val:
+                    _expansion_parts.append(val)
         if _expansion_parts:
             query_text = query_text + " " + " ".join(_expansion_parts)
 
@@ -80,7 +84,7 @@ class GraphRetriever(BaseRetriever):
                 hyde_query = generate_hyde_query(self.model, query_text)
                 from core.utils.logger import logger
 
-                logger.info(f"HyDE Query generated.")
+                logger.info("HyDE Query generated.")
                 query_embedding = get_embedding(hyde_query)
             except Exception as e:
                 from core.utils.logger import logger
@@ -94,10 +98,12 @@ class GraphRetriever(BaseRetriever):
         retrieved_facts = []
         seen_case_ids = set()
 
-        # Separate ordered lists for RRF fusion (maintain retrieval order per source)
-        vector_laws: List[Dict[str, Any]] = []
+        # Separate ordered lists for Weighted RRF fusion
+        direct_laws: List[Dict[str, Any]] = []
+        graph_laws: List[Dict[str, Any]] = []
         bm25_laws: List[Dict[str, Any]] = []
-        vector_law_ids: set = set()
+        direct_law_ids: set = set()
+        graph_law_ids: set = set()
         bm25_law_ids: set = set()
 
         from core.graph_construct.neo4j_manager import neo4j_manager
@@ -114,15 +120,20 @@ class GraphRetriever(BaseRetriever):
             cases, laws = search_similar_nodes_direct(
                 self.model, query_embedding, query_text, top_k=top_k
             )
+            retrieved_facts = cases
+            direct_laws = laws
+        else:
+            import concurrent.futures
 
-            return {}, laws, cases
+            top_k = retrieve_config.get("top_retrieve_top_k", 5)
+            top_k_bm25 = retrieve_config.get("direct_retrieve_top_k", 5)
 
-        with neo4j_manager.driver.session() as session:
-            # 1. Vector Search for Cases + Direct Law Vector Search
-            if query_embedding and retrieve_config.get("top_retrieve", True):
-                top_k = retrieve_config.get("top_retrieve_top_k", 5)
-
-                # 1a. Case-based vector search → linked laws via graph traversal
+            # 1a. Worker: Case vector search + Graph Traversal
+            def _fetch_case_graph():
+                local_cases = []
+                local_laws = []
+                if not (query_embedding and retrieve_config.get("top_retrieve", True)):
+                    return local_cases, local_laws
                 vector_query = """
                 CALL db.index.vector.queryNodes('case_embeddings', $top_k, $query_embedding)
                 YIELD node AS case, score
@@ -130,144 +141,176 @@ class GraphRetriever(BaseRetriever):
                 RETURN case, collect(l) AS laws, score
                 ORDER BY score DESC
                 """
-                results = session.run(vector_query, top_k=top_k, query_embedding=query_embedding)
-                for record in results:
-                    c = record["case"]
-                    if c["id"] not in seen_case_ids:
-                        seen_case_ids.add(c["id"])
-                        retrieved_facts.append(
-                            {
-                                "id": c["id"],
-                                "caseId": c.get("caseId"),
-                                "description": c.get("description"),
-                                "dispute": c.get("dispute", []),
-                                "law": c.get("law", []),
-                            }
-                        )
-                    for law_node in record["laws"]:
-                        if law_node and law_node["id"] not in vector_law_ids:
-                            vector_law_ids.add(law_node["id"])
-                            vector_laws.append(
-                                {
-                                    "id": law_node["id"],
-                                    "entry": law_node.get("entry"),
-                                    "description": law_node.get("description"),
-                                    "judge_dep": law_node.get("judge_dep", "[]"),
-                                    "related_laws": law_node.get("related_laws", "[]"),
-                                }
-                            )
-
-                # 1b. Direct law vector search — catches laws with no matched case
                 try:
-                    law_vector_query = """
-                    CALL db.index.vector.queryNodes('law_embeddings', $top_k, $query_embedding)
-                    YIELD node AS law, score
-                    RETURN law, score
-                    ORDER BY score DESC
-                    """
-                    law_results = session.run(
-                        law_vector_query, top_k=top_k, query_embedding=query_embedding
-                    )
-                    for record in law_results:
-                        law_node = record["law"]
-                        if law_node and law_node["id"] not in vector_law_ids:
-                            vector_law_ids.add(law_node["id"])
-                            vector_laws.append(
+                    with neo4j_manager.driver.session() as s:
+                        res = s.run(vector_query, top_k=top_k, query_embedding=query_embedding)
+                        for record in res:
+                            c = record["case"]
+                            local_cases.append(
                                 {
-                                    "id": law_node["id"],
-                                    "entry": law_node.get("entry"),
-                                    "description": law_node.get("description"),
-                                    "judge_dep": law_node.get("judge_dep", "[]"),
-                                    "related_laws": law_node.get("related_laws", "[]"),
+                                    "id": c["id"],
+                                    "caseId": c.get("caseId"),
+                                    "description": c.get("description"),
+                                    "dispute": c.get("dispute", []),
+                                    "law": c.get("law", []),
                                 }
                             )
-                except Exception as e:
-                    from core.utils.logger import logger
-
-                    logger.warning(f"Direct law vector search failed: {e}")
-
-            # 2. Fulltext Search for Cases (BM25 replacement)
-            # Neo4j fulltext requires lucene query syntax. We split words and use OR operator.
-            if retrieve_config.get("direct_retrieve", True):
-                import re
-
-                # M7: Expand Vietnamese legal abbreviations before BM25 fulltext
-                expand_abbrev = retrieve_config.get("expand_abbreviations", True)
-                bm25_query_text = preprocess_for_retrieval(query_text, expand=expand_abbrev)
-
-                clean_query = re.sub(r"[^\w\s]", "", bm25_query_text)
-                words = clean_query.split()
-                if words:
-                    lucene_query = " OR ".join(
-                        [f"*{w}*" for w in words[:10]]
-                    )  # limit to first 10 words to avoid parsing errors
-                    top_k_bm25 = retrieve_config.get("direct_retrieve_top_k", 5)
-                    # 2a. Case-based fulltext search → linked laws via graph traversal
-                    text_query = """
-                    CALL db.index.fulltext.queryNodes('case_fulltext', $lucene_query, {limit: $top_k})
-                    YIELD node AS case, score
-                    OPTIONAL MATCH (case)-[:RELATES_TO_LAW]->(l:Laws)
-                    RETURN case, collect(l) AS laws, score
-                    ORDER BY score DESC
-                    """
-                    try:
-                        results = session.run(
-                            text_query, lucene_query=lucene_query, top_k=top_k_bm25
-                        )
-                        for record in results:
-                            c = record["case"]
-                            if c["id"] not in seen_case_ids:
-                                seen_case_ids.add(c["id"])
-                                retrieved_facts.append(
-                                    {
-                                        "id": c["id"],
-                                        "caseId": c.get("caseId"),
-                                        "description": c.get("description"),
-                                        "dispute": c.get("dispute", []),
-                                        "law": c.get("law", []),
-                                    }
-                                )
                             for law_node in record["laws"]:
-                                if law_node and law_node["id"] not in bm25_law_ids:
-                                    bm25_law_ids.add(law_node["id"])
-                                    bm25_laws.append(
+                                if law_node:
+                                    local_laws.append(
                                         {
                                             "id": law_node["id"],
                                             "entry": law_node.get("entry"),
                                             "description": law_node.get("description"),
                                             "judge_dep": law_node.get("judge_dep", "[]"),
                                             "related_laws": law_node.get("related_laws", "[]"),
+                                            "_embedding": law_node.get("embedding"),
                                         }
                                     )
-                    except Exception as e:
-                        print(f"Fulltext case search error: {e}")
+                except Exception as e:
+                    from core.utils.logger import logger
 
-                    # 2b. Direct law fulltext search — catches laws with no matched case
-                    try:
-                        law_text_query = """
-                        CALL db.index.fulltext.queryNodes('law_fulltext', $lucene_query, {limit: $top_k})
-                        YIELD node AS law, score
-                        RETURN law, score
-                        ORDER BY score DESC
-                        """
-                        law_results = session.run(
-                            law_text_query, lucene_query=lucene_query, top_k=top_k_bm25
-                        )
-                        for record in law_results:
+                    logger.warning(f"Case vector search error: {e}")
+                return local_cases, local_laws
+
+            # 1b. Worker: Direct Law Vector Search
+            def _fetch_direct_laws():
+                local_laws = []
+                if not (query_embedding and retrieve_config.get("top_retrieve", True)):
+                    return local_laws
+                law_vector_query = """
+                CALL db.index.vector.queryNodes('law_embeddings', $top_k, $query_embedding)
+                YIELD node AS law, score
+                RETURN law, score
+                ORDER BY score DESC
+                """
+                try:
+                    with neo4j_manager.driver.session() as s:
+                        res = s.run(law_vector_query, top_k=top_k, query_embedding=query_embedding)
+                        for record in res:
                             law_node = record["law"]
-                            if law_node and law_node["id"] not in bm25_law_ids:
-                                bm25_law_ids.add(law_node["id"])
-                                bm25_laws.append(
+                            if law_node:
+                                local_laws.append(
                                     {
                                         "id": law_node["id"],
                                         "entry": law_node.get("entry"),
                                         "description": law_node.get("description"),
                                         "judge_dep": law_node.get("judge_dep", "[]"),
                                         "related_laws": law_node.get("related_laws", "[]"),
+                                        "_embedding": law_node.get("embedding"),
                                     }
                                 )
-                    except Exception as e:
-                        print(f"Fulltext law search error: {e}")
+                except Exception as e:
+                    from core.utils.logger import logger
+
+                    logger.warning(f"Direct law vector search failed: {e}")
+                return local_laws
+
+            # 2. Worker: Fulltext BM25 Search
+            def _fetch_fulltext():
+                local_cases = []
+                local_laws = []
+                if not retrieve_config.get("direct_retrieve", True):
+                    return local_cases, local_laws
+                import re
+
+                expand_abbrev = retrieve_config.get("expand_abbreviations", True)
+                bm25_query_text = preprocess_for_retrieval(query_text, expand=expand_abbrev)
+                clean_query = re.sub(r"[^\w\s]", "", bm25_query_text)
+                words = clean_query.split()
+                if not words:
+                    return local_cases, local_laws
+                lucene_query = " OR ".join([f"{w}" for w in words[:10]])
+
+                try:
+                    with neo4j_manager.driver.session() as s:
+                        # 2a. Case fulltext
+                        c_res = s.run(
+                            "CALL db.index.fulltext.queryNodes('case_fulltext', $lucene_query, {limit: $top_k}) YIELD node AS case, score OPTIONAL MATCH (case)-[:RELATES_TO_LAW]->(l:Laws) RETURN case, score, collect(l) AS laws ORDER BY score DESC",
+                            lucene_query=lucene_query,
+                            top_k=top_k_bm25,
+                        )
+                        for record in c_res:
+                            c = record["case"]
+                            local_cases.append(
+                                {
+                                    "id": c["id"],
+                                    "caseId": c.get("caseId"),
+                                    "description": c.get("description"),
+                                    "dispute": c.get("dispute", []),
+                                    "law": c.get("law", []),
+                                }
+                            )
+                            for law_node in record["laws"]:
+                                if law_node:
+                                    local_laws.append(
+                                        {
+                                            "id": law_node["id"],
+                                            "entry": law_node.get("entry"),
+                                            "description": law_node.get("description"),
+                                            "judge_dep": law_node.get("judge_dep", "[]"),
+                                            "related_laws": law_node.get("related_laws", "[]"),
+                                            "_embedding": law_node.get("embedding"),
+                                        }
+                                    )
+                        # 2b. Direct law fulltext
+                        l_res = s.run(
+                            "CALL db.index.fulltext.queryNodes('law_fulltext', $lucene_query, {limit: $top_k}) YIELD node AS law, score RETURN law, score ORDER BY score DESC",
+                            lucene_query=lucene_query,
+                            top_k=top_k_bm25,
+                        )
+                        for record in l_res:
+                            law_node = record["law"]
+                            if law_node:
+                                local_laws.append(
+                                    {
+                                        "id": law_node["id"],
+                                        "entry": law_node.get("entry"),
+                                        "description": law_node.get("description"),
+                                        "judge_dep": law_node.get("judge_dep", "[]"),
+                                        "related_laws": law_node.get("related_laws", "[]"),
+                                        "_embedding": law_node.get("embedding"),
+                                    }
+                                )
+                except Exception as e:
+                    from core.utils.logger import logger
+
+                    logger.warning(f"Fulltext search error: {e}")
+                return local_cases, local_laws
+
+            # Execute concurrent queries in parallel
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                f_case_graph = executor.submit(_fetch_case_graph)
+                f_direct_laws = executor.submit(_fetch_direct_laws)
+                f_fulltext = executor.submit(_fetch_fulltext)
+
+                case_graph_cases, case_graph_laws = f_case_graph.result()
+                raw_direct_laws = f_direct_laws.result()
+                fulltext_cases, fulltext_laws = f_fulltext.result()
+
+            # Process Cases
+            for c in case_graph_cases + fulltext_cases:
+                if c["id"] not in seen_case_ids:
+                    seen_case_ids.add(c["id"])
+                    retrieved_facts.append(c)
+
+            # Process Direct Laws
+            for law_item in raw_direct_laws:
+                if law_item["id"] not in direct_law_ids:
+                    direct_law_ids.add(law_item["id"])
+                    direct_laws.append(law_item)
+
+            # Process Graph Laws (from case traversal)
+            for law_item in case_graph_laws:
+                if law_item["id"] not in graph_law_ids:
+                    graph_law_ids.add(law_item["id"])
+                    graph_laws.append(law_item)
+
+            # Process BM25 Laws
+            for law_item in fulltext_laws:
+                if law_item["id"] not in bm25_law_ids:
+                    bm25_law_ids.add(law_item["id"])
+                    bm25_laws.append(law_item)
 
         if not retrieved_facts:
             return {}, [], []
@@ -278,17 +321,20 @@ class GraphRetriever(BaseRetriever):
             augmented_laws = self._retrieve_law_augment(case)
             original_retrieved_res["augmented"] = augmented_laws
 
-        # 4. RRF fusion: merge vector, BM25, and augmented law lists
-        # M8: k is configurable (default 60, lower = sharper score spread for small datasets)
+        # 4. Weighted RRF fusion: merge direct, graph, BM25, and augmented law lists
+        # Weights: [Direct Law Vector = 1.3, Graph Traversal = 1.0, BM25 = 0.5, Augmented = 1.0]
         rrf_k = retrieve_config.get("rrf_k", 60)
+        rrf_weights = retrieve_config.get("rrf_weights", [1.3, 1.0, 0.5, 1.0])
         fused_laws = reciprocal_rank_fusion(
-            [vector_laws, bm25_laws, augmented_laws],
+            [direct_laws, graph_laws, bm25_laws, augmented_laws],
             k=rrf_k,
             id_key="id",
+            weights=rrf_weights,
         )
-        original_retrieved_res["fusion_method"] = "rrf"
+        original_retrieved_res["fusion_method"] = "weighted_rrf"
         original_retrieved_res["rrf_k"] = rrf_k
-        original_retrieved_res["vector_laws_count"] = len(vector_laws)
+        original_retrieved_res["direct_laws_count"] = len(direct_laws)
+        original_retrieved_res["graph_laws_count"] = len(graph_laws)
         original_retrieved_res["bm25_laws_count"] = len(bm25_laws)
         original_retrieved_res["augmented_laws_count"] = len(augmented_laws)
 
@@ -304,26 +350,62 @@ class GraphRetriever(BaseRetriever):
         # 5. Safe parsing of judge_dep and related_laws fields
         final_retrieved_laws = []
         import ast
+        import json
 
         for law in fused_laws:
-            try:
-                law["judge_dep"] = ast.literal_eval(str(law.get("judge_dep", "[]")))
-            except Exception:
+            jd = law.get("judge_dep")
+            if isinstance(jd, list):
+                law["judge_dep"] = jd
+            elif isinstance(jd, str):
+                try:
+                    law["judge_dep"] = (
+                        json.loads(jd) if jd.strip().startswith("[") else ast.literal_eval(jd)
+                    )
+                except Exception:
+                    law["judge_dep"] = []
+            else:
                 law["judge_dep"] = []
-            try:
-                law["related_laws"] = ast.literal_eval(str(law.get("related_laws", "[]")))
-            except Exception:
+
+            rl = law.get("related_laws")
+            if isinstance(rl, list):
+                law["related_laws"] = rl
+            elif isinstance(rl, str):
+                try:
+                    law["related_laws"] = (
+                        json.loads(rl) if rl.strip().startswith("[") else ast.literal_eval(rl)
+                    )
+                except Exception:
+                    law["related_laws"] = []
+            else:
                 law["related_laws"] = []
+
             final_retrieved_laws.append(law)
 
-        # M1: MMR diversity pass – reduce redundant laws before judge
+        # 6. Cross-Encoder Reranker pass (contextual semantic scoring)
+        use_reranker = retrieve_config.get("use_reranker", True)
+        if use_reranker and final_retrieved_laws:
+            try:
+                from core.retriever.reranker import get_reranker
+
+                reranker = get_reranker()
+                rerank_top_k = retrieve_config.get("rerank_top_k", len(final_retrieved_laws))
+                final_retrieved_laws = reranker.rerank(
+                    query_text, final_retrieved_laws, top_k=rerank_top_k
+                )
+                original_retrieved_res["reranker_applied"] = True
+            except Exception as e:
+                from core.utils.logger import logger
+
+                logger.warning(f"Cross-encoder reranking failed: {e}")
+
+        # 7. MMR diversity pass – reduce redundant laws before judge
         use_mmr = retrieve_config.get("use_mmr", False)
         if use_mmr and final_retrieved_laws:
             try:
                 from core.utils.mmr import maximal_marginal_relevance
 
                 mmr_k = retrieve_config.get("mmr_top_k", retrieve_config.get("max_judge_laws", 8))
-                mmr_lambda = retrieve_config.get("mmr_lambda", 0.5)
+                mmr_lambda = retrieve_config.get("mmr_lambda", 0.85)
                 final_retrieved_laws = maximal_marginal_relevance(
                     query_vec=query_embedding,
                     laws=final_retrieved_laws,

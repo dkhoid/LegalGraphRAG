@@ -4,6 +4,7 @@ import os
 from typing import Optional
 from openai import OpenAI
 from .base import BaseModel
+from core.utils.logger import logger
 
 
 class OpenAIBaseModel(BaseModel):
@@ -82,7 +83,12 @@ class OpenAIBaseModel(BaseModel):
                 "Vui lòng cung cấp API Key trên giao diện hoặc cấu hình .env để tiếp tục."
             )
 
-        if client is None or ctx_api_key or api_key or ctx_base_url:
+        # Re-create client only if not initialized or per-request override differs from instance default
+        if (
+            client is None
+            or effective_api_key != self.api_key
+            or effective_base_url != self.base_url
+        ):
             client = OpenAI(
                 api_key=effective_api_key,
                 base_url=effective_base_url,
@@ -100,7 +106,7 @@ class OpenAIBaseModel(BaseModel):
             )
             return response.choices[0].message.content or ""
         except Exception as e:
-            print(f"API call error: {e}")
+            logger.error(f"OpenAI API call error ({effective_model}): {e}")
             return "API call failed"
 
     def update_api_key(self, api_key: str):

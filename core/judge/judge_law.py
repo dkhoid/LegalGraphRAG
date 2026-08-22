@@ -78,6 +78,7 @@ def judge_law_batch(chatbot, case_description: str, law: dict) -> tuple:
         Tuple (applicable: bool, reasoning: str) – same contract as judge_law().
     """
     import ast
+    from core.utils.logger import logger
 
     judge_deps = law.get("judge_dep", [])
     if isinstance(judge_deps, str):
@@ -101,19 +102,37 @@ def judge_law_batch(chatbot, case_description: str, law: dict) -> tuple:
     response = chatbot.generate_response(prompt, max_length=512)
 
     try:
-        # Extract first JSON object from response (model may add preamble text)
-        match = re.search(r"\{.*\}", response, re.DOTALL)
-        if not match:
+        # 1. Clean DeepSeek R1 / reasoning tags (<think>...</think>)
+        cleaned_response = re.sub(r"(?is)<think>.*?</think>", "", response).strip()
+
+        # 2. Extract JSON object
+        first_brace = cleaned_response.find("{")
+        last_brace = cleaned_response.rfind("}")
+        if first_brace != -1 and last_brace > first_brace:
+            json_str = cleaned_response[first_brace : last_brace + 1]
+            parsed = json.loads(json_str)
+        else:
             raise ValueError("No JSON object found in response")
-        parsed = json.loads(match.group())
+
         applicable = bool(parsed.get("applicable", False))
         reasoning = str(parsed.get("conditions", []))
         return applicable, reasoning
     except Exception as e:
-        # Safe fallback: avoid explosive request cascade by just assuming it's true
-        # and letting the LLM decide later in the final pipeline step.
-        print(f"Batch judge parsing failed: {e}. Defaulting to applicable.")
-        return True, "Parsing failed, defaulted to True"
+        logger.warning(f"Batch judge parsing failed: {e}. Retrying with simplified prompt...")
+        # Retry once with a simpler prompt expecting only true/false
+        try:
+            law_desc = law.get("description", law.get("text", ""))
+            retry_response = chatbot.generate_response(
+                get_prompt("JUDGE_LAW_PROMPT1").format(law=law_desc, case=case_description),
+                max_length=128,
+            )
+            decision = retry_response.strip().split("\n")[-1].lower()
+            if "true" in decision:
+                return True, "Retry fallback: applicable"
+            return False, "Retry fallback: not applicable"
+        except Exception as retry_err:
+            logger.warning(f"Retry also failed: {retry_err}. Defaulting to NOT applicable.")
+            return False, f"All parsing failed, defaulted to False: {e}"
 
 
 def judge_law_self_consistent(
@@ -123,42 +142,42 @@ def judge_law_self_consistent(
     n_samples: int = 5,
     judge_chatbot=None,
 ) -> tuple[bool, float, str]:
-    """Self-consistency judge: sample N decisions and take majority vote.
+    """Self-consistency judge: sample N decisions concurrently and take majority vote.
 
     Instead of calling the judge once and trusting the output, we call it N
     times with temperature > 0 to get diverse reasoning paths, then aggregate.
     Paths that consistently agree are more likely to be correct.
 
-    This technique is from "Self-Consistency Improves Chain of Thought Reasoning"
-    (Wang et al., 2023, https://arxiv.org/abs/2203.11171).
-
     Args:
         chatbot: Primary model (used as fallback if judge_chatbot is None).
         case_description: Case text for the current defendant.
         law: Law dict with "description"/"text" and optional "judge_dep".
-        n_samples: Number of independent samples to take. More = more reliable
-                   but higher latency/cost. Recommended: 3 (fast) to 7 (accurate).
-        judge_chatbot: Optional cheap model (e.g., Gemini Flash Lite) for sampling.
+        n_samples: Number of independent samples to take.
+        judge_chatbot: Optional cheap model (e.g., Gemini Flash Lite / DeepSeek) for sampling.
                        If None, the primary chatbot is used.
 
     Returns:
-        Tuple of (decision: bool, confidence: float, reasoning: str) where
-        - decision    = majority vote result (True if > 50% samples say applicable)
-        - confidence  = fraction of samples agreeing (e.g., 0.8 = 4/5 agree)
-        - reasoning   = summary of agreement ratio
+        Tuple of (decision: bool, confidence: float, reasoning: str)
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     sampler = judge_chatbot if judge_chatbot is not None else chatbot
     votes: list[bool] = []
 
-    for i in range(n_samples):
+    def _sample_once():
         try:
-            # Use batch judge for structured output; vary temperature implicitly
-            # by asking the sampler model (Gemini uses default temp 0.7)
             result, _ = judge_law_batch(sampler, case_description, law)
-            votes.append(result)
+            return result
         except Exception:
-            # On any error, skip this sample rather than crashing
-            continue
+            return None
+
+    workers = min(max(n_samples, 1), 5)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(_sample_once) for _ in range(n_samples)]
+        for f in as_completed(futures):
+            res = f.result()
+            if res is not None:
+                votes.append(res)
 
     if not votes:
         # All samples failed – fall back to primary chatbot single call

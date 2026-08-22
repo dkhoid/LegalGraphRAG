@@ -106,22 +106,22 @@ Vụ án cần phán xử:
 """
 
 JUDGE_CIVIL_ALL_PROMPT = """
-Bạn là một trợ lý phân tích pháp lý chuyên nghiệp. Vui lòng xác định vấn đề pháp lý áp dụng cho đương sự dựa trên các vấn đề ứng viên, và dự đoán các điều luật áp dụng.
+Bạn là một trợ lý phân tích pháp lý chuyên nghiệp. Vui lòng xác định vấn đề pháp lý áp dụng cho đương sự dựa trên các vấn đề ứng viên, và chỉ định các điều luật làm căn cứ phán quyết.
 
 Lưu ý:
 - Trừ khi thật sự cần thiết, đừng xác định nhiều vấn đề, mà hãy chọn một vấn đề phù hợp nhất.
 - Quá trình chọn vấn đề của bạn phải tuân thủ các bước sau:
-  1. **Xác định số lượng hành vi**: Phán đoán xem có bao nhiêu hành vi pháp lý độc lập.
-  2. **Áp dụng vấn đề cuối cùng**: Với mỗi hành vi, xác định vấn đề cuối cùng sẽ được áp dụng.
-  3. **Dự đoán điều luật**: Nêu rõ các điều luật cụ thể làm cơ sở phán quyết, và dự đoán hợp lý kết quả có thể xảy ra dựa trên hoàn cảnh vụ án, luật và thực tiễn xét xử.
+  1. **Xác định hành vi & tranh chấp**: Phán đoán hành vi pháp lý và quan hệ tranh chấp trọng tâm.
+  2. **Căn cứ pháp lý áp dụng**: Ưu tiên chọn và viện dẫn chính xác các điều luật cụ thể từ danh sách "Quy định pháp luật" được cung cấp ở trên làm cơ sở giải quyết.
+  3. **Phán quyết trách nhiệm**: Dự đoán hợp lý kết quả giải quyết tranh chấp (trách nhiệm dân sự, bồi thường thiệt hại, phân chia tài sản) dựa trên hoàn cảnh vụ án và luật áp dụng.
 - Đầu ra của bạn phải là một **đối tượng JSON**, và chỉ chứa duy nhất đối tượng JSON này. Cấu trúc của đối tượng JSON như sau:
 ```json
 {{
     "dispute_type": list(str), // Vấn đề pháp lý / loại tranh chấp
-    "law_article": list(str), // Các điều luật làm cơ sở, ví dụ ["Điều 232", "Điều 233"]
+    "law_article": list(str), // Các điều luật làm cơ sở, ví dụ ["Điều 101", "Điều 33"]
     "resolution": {{
-        "liability": string, // Trách nhiệm dân sự (Ai bồi thường?)
-        "compensation": string // Hướng xử lý tài sản/bồi thường
+        "liability": string, // Trách nhiệm dân sự (Ai có nghĩa vụ bồi thường/thực hiện nghĩa vụ?)
+        "compensation": string // Hướng xử lý tài sản/mức bồi thường cụ thể
     }}
 }}
 ```

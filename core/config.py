@@ -73,7 +73,7 @@ class RetrieveConfig:
     reranker_top_k: int = 8
     use_self_consistent: bool = True
     self_consistent_n: int = 3
-    judge_chatbot: str = "gpt4o-mini"
+    judge_chatbot: str = "deepseek_v3"
     use_mmr: bool = True
     mmr_lambda: float = 0.5
     mmr_top_k: int = 5

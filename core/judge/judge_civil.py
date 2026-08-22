@@ -45,12 +45,38 @@ def normalize_law_article(raw: str) -> str:
     return s.strip()
 
 
+def format_law_entry(entry_id: str) -> str:
+    """Format law entry ID into human-readable legal citation."""
+    if not entry_id:
+        return "Điều luật"
+    s = str(entry_id).replace("zalo_", "").strip()
+    doc_mapping = {
+        "91/2015/qh13": "Bộ luật Dân sự 2015",
+        "45/2019/qh14": "Bộ luật Lao động 2019",
+        "52/2014/qh13": "Luật Hôn nhân và Gia đình 2014",
+        "92/2015/qh13": "Bộ luật Tố tụng Dân sự 2015",
+        "45/2013/qh13": "Luật Đất đai 2013",
+        "100/2015/qh13": "Bộ luật Hình sự 2015",
+    }
+    if "+" in s:
+        doc_code, art_num = s.split("+", 1)
+        doc_name = doc_mapping.get(doc_code.lower(), doc_code.upper())
+        return f"Điều luật {art_num} ({doc_name})"
+    return f"Điều luật {s}"
+
+
 def format_law(law_used):
     res = ""
     for law in law_used:
-        law["disputes"] = law.get("disputes", [])
-        issues = [c.replace("\n", " ") for c in law["disputes"] if c]
-        res += f"Article {law['entry']} — Applicable issues: {', '.join(issues)}. Content: {law['description']}\n---\n"
+        law_disputes = law.get("disputes", [])
+        if isinstance(law_disputes, list):
+            issues = [str(c).replace("\n", " ") for c in law_disputes if c]
+        else:
+            issues = [str(law_disputes)]
+        raw_entry = law.get("entry") or law.get("id", "")
+        entry_title = format_law_entry(raw_entry)
+        desc = law.get("description", law.get("text", ""))
+        res += f"{entry_title} — Vấn đề pháp lý liên quan: {', '.join(issues)}. Nội dung: {desc}\n---\n"
 
     return res
 
@@ -59,28 +85,45 @@ def format_fact(facts):
     res = ""
     for fact in facts:
         issues = fact.get("dispute", [])
-        res += f"Legal issue: {', '.join(issues)}. Fact description: {fact['description']}.\n"
+        res += f"Vấn đề pháp lý: {', '.join(issues)}. Tình tiết vụ án: {fact['description']}.\n"
     return res
 
 
 def judge_civil(chatbot, law_used, retrieved_facts, case_description):
+    import ast
+    from core.utils.logger import logger
+
     response = chatbot.generate_response(
         get_prompt("JUDGE_CIVIL_PROMPT").format(law=format_law(law_used), case=case_description),
         max_length=4096,
     )
     try:
-        first = response.rfind("[")
-        last = response.rfind("]") + 1
-        response = response.replace("，", ",")
-        response = list(set(eval(response[first:last])))
+        # Strip DeepSeek reasoning tags if present
+        cleaned = re.sub(r"(?is)<think>.*?</think>", "", response).strip()
+        first = cleaned.find("[")
+        last = cleaned.rfind("]") + 1
+        if first != -1 and last > first:
+            json_str = cleaned[first:last].replace("，", ",")
+            try:
+                parsed = json.loads(json_str)
+            except Exception:
+                parsed = ast.literal_eval(json_str)
+            response_list = (
+                list(set(parsed))
+                if isinstance(parsed, (list, set, tuple))
+                else ["No applicable issue identified"]
+            )
+        else:
+            response_list = ["No applicable issue identified"]
     except Exception as e:
-        print(f"Error parsing response: {e}")
-        response = ["No applicable issue identified"]
-    response = [str(x).strip() for x in response if str(x).strip()]
-    return response
+        logger.warning(f"Error parsing judge_civil response: {e}")
+        response_list = ["No applicable issue identified"]
+    return [str(x).strip() for x in response_list if str(x).strip()]
 
 
 def judge_civil_all(chatbot, law_used, retrieved_facts, case_description):
+    from core.utils.logger import logger
+
     response = chatbot.generate_response(
         get_prompt("JUDGE_CIVIL_ALL_PROMPT")
         + get_prompt("JUDGE_CIVIL_ALL_INPUT_TEMPLATE").format(
@@ -91,21 +134,26 @@ def judge_civil_all(chatbot, law_used, retrieved_facts, case_description):
         max_length=4096,
     )
     try:
-        first = response.find("{")
-        last = response.rfind("}") + 1
-        response = response[first:last]
-        result = json.loads(response)
+        # Strip DeepSeek reasoning tags if present
+        cleaned = re.sub(r"(?is)<think>.*?</think>", "", response).strip()
+        first = cleaned.find("{")
+        last = cleaned.rfind("}") + 1
+        if first != -1 and last > first:
+            json_str = cleaned[first:last]
+            result = json.loads(json_str)
+        else:
+            raise ValueError("No JSON object found in LLM response")
 
         # Normalize law_article entries to remove noise from LLM output
         raw_laws = result.get("law_article", [])
         if isinstance(raw_laws, list):
-            result["law_article"] = [normalize_law_article(l) for l in raw_laws]
+            result["law_article"] = [normalize_law_article(law_item) for law_item in raw_laws]
         elif isinstance(raw_laws, str):
             result["law_article"] = [normalize_law_article(raw_laws)]
 
         return result
     except Exception as e:
-        print(f"Error parsing response: {e}")
+        logger.warning(f"Error parsing judge_civil_all response: {e}")
         return {
             "dispute_type": ["No applicable issue identified"],
             "law_article": ["N/A"],
