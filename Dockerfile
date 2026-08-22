@@ -15,15 +15,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Cài đặt thư viện Python
+# Cài đặt thư viện Python (Ưu tiên PyTorch CPU-only để image nhẹ và tiết kiệm RAM)
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir torch --extra-index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
 
 # --- Stage 2: Final Image ---
 FROM python:3.11-slim
 
 WORKDIR /app
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2
 
 # Chỉ copy các thư viện đã cài đặt từ builder stage sang để giảm dung lượng
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

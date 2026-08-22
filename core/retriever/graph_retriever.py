@@ -106,6 +106,7 @@ class GraphRetriever(BaseRetriever):
         graph_law_ids: set = set()
         bm25_law_ids: set = set()
 
+        from core.utils.legal_text import get_hierarchy_boost
         from core.graph_construct.neo4j_manager import neo4j_manager
 
         if not neo4j_manager.driver:
@@ -114,19 +115,47 @@ class GraphRetriever(BaseRetriever):
             logger.warning(
                 "Neo4j driver not initialized. Falling back to local in-memory graph search."
             )
-            from core.graph_construct.graph_search import search_similar_nodes_direct
+            from core.graph_construct.graph_search import (
+                search_similar_nodes_direct,
+                search_similar_nodes_top,
+            )
 
             top_k = retrieve_config.get("top_retrieve_top_k", 5)
-            cases, laws = search_similar_nodes_direct(
-                self.model, query_embedding, query_text, top_k=top_k
-            )
-            retrieved_facts = cases
-            direct_laws = laws
+            top_retrieve = retrieve_config.get("top_retrieve", True)
+            direct_retrieve = retrieve_config.get("direct_retrieve", True)
+
+            if top_retrieve and direct_retrieve:
+                _, c_top, l_top = search_similar_nodes_top(
+                    self.model, query_embedding, query_text, top_k=top_k
+                )
+                c_dir, l_dir = search_similar_nodes_direct(
+                    self.model, query_embedding, query_text, top_k=top_k
+                )
+                seen_ids = set()
+                for c in c_top + c_dir:
+                    if c["id"] not in seen_ids:
+                        seen_ids.add(c["id"])
+                        retrieved_facts.append(c)
+                graph_laws = l_top
+                direct_laws = l_dir
+            elif top_retrieve:
+                _, c_top, l_top = search_similar_nodes_top(
+                    self.model, query_embedding, query_text, top_k=top_k
+                )
+                retrieved_facts = c_top
+                graph_laws = l_top
+            elif direct_retrieve:
+                c_dir, l_dir = search_similar_nodes_direct(
+                    self.model, query_embedding, query_text, top_k=top_k
+                )
+                retrieved_facts = c_dir
+                direct_laws = l_dir
         else:
             import concurrent.futures
 
             top_k = retrieve_config.get("top_retrieve_top_k", 5)
             top_k_bm25 = retrieve_config.get("direct_retrieve_top_k", 5)
+            min_traversal_sim = retrieve_config.get("min_traversal_similarity", 0.40)
 
             # 1a. Worker: Case vector search + Graph Traversal
             def _fetch_case_graph():
@@ -157,6 +186,21 @@ class GraphRetriever(BaseRetriever):
                             )
                             for law_node in record["laws"]:
                                 if law_node:
+                                    law_emb = law_node.get("embedding")
+                                    if law_emb and min_traversal_sim > 0 and query_embedding:
+                                        import numpy as np
+
+                                        emb_arr = np.array(law_emb, dtype=np.float32)
+                                        q_arr = np.array(query_embedding, dtype=np.float32)
+                                        sim = float(
+                                            np.dot(q_arr, emb_arr)
+                                            / (
+                                                np.linalg.norm(q_arr) * np.linalg.norm(emb_arr)
+                                                + 1e-9
+                                            )
+                                        )
+                                        if sim < min_traversal_sim:
+                                            continue
                                     local_laws.append(
                                         {
                                             "id": law_node["id"],
@@ -176,7 +220,7 @@ class GraphRetriever(BaseRetriever):
             # 1b. Worker: Direct Law Vector Search
             def _fetch_direct_laws():
                 local_laws = []
-                if not (query_embedding and retrieve_config.get("top_retrieve", True)):
+                if not (query_embedding and retrieve_config.get("direct_retrieve", True)):
                     return local_laws
                 law_vector_query = """
                 CALL db.index.vector.queryNodes('law_embeddings', $top_k, $query_embedding)
@@ -315,22 +359,36 @@ class GraphRetriever(BaseRetriever):
         if not retrieved_facts:
             return {}, [], []
 
-        # 3. Augment Laws using LLM if configured
+        # 3. Augment Laws using LLM if configured with Smart Gating
         augmented_laws = []
         if retrieve_config.get("augment_retrieve", False):
-            augmented_laws = self._retrieve_law_augment(case)
-            original_retrieved_res["augmented"] = augmented_laws
+            smart_gate = retrieve_config.get("smart_augment_gating", True)
+            if smart_gate and (len(direct_laws) >= 3 or len(graph_laws) >= 3):
+                pass  # Skip LLM call when high confidence direct/graph candidates already exist
+            else:
+                augmented_laws = self._retrieve_law_augment(case)
+                original_retrieved_res["augmented"] = augmented_laws
 
         # 4. Weighted RRF fusion: merge direct, graph, BM25, and augmented law lists
-        # Weights: [Direct Law Vector = 1.3, Graph Traversal = 1.0, BM25 = 0.5, Augmented = 1.0]
+        # Weights: [Direct Law Vector = 1.5, Graph Traversal = 1.2, BM25 = 0.8, Augmented = 0.5]
         rrf_k = retrieve_config.get("rrf_k", 60)
-        rrf_weights = retrieve_config.get("rrf_weights", [1.3, 1.0, 0.5, 1.0])
+        rrf_weights = retrieve_config.get("rrf_weights", [1.5, 1.2, 0.8, 0.5])
+        codex_boost = retrieve_config.get("codex_boost_factor", 1.35)
+
         fused_laws = reciprocal_rank_fusion(
             [direct_laws, graph_laws, bm25_laws, augmented_laws],
             k=rrf_k,
             id_key="id",
             weights=rrf_weights,
         )
+
+        # Apply Legal Hierarchy Primacy Boost (Bộ luật Quốc hội > Nghị định > Thông tư)
+        if codex_boost > 1.0:
+            for law in fused_laws:
+                entry = str(law.get("entry", ""))
+                boost = get_hierarchy_boost(entry, default_boost=codex_boost)
+                law["_rrf_score"] = law.get("_rrf_score", 0.0) * boost
+            fused_laws.sort(key=lambda x: x.get("_rrf_score", 0.0), reverse=True)
         original_retrieved_res["fusion_method"] = "weighted_rrf"
         original_retrieved_res["rrf_k"] = rrf_k
         original_retrieved_res["direct_laws_count"] = len(direct_laws)

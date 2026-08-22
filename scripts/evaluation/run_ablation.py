@@ -82,23 +82,10 @@ util_module.judge_civil_all = cached_judge_civil_all
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def normalize(text: str) -> str:
-    return str(text).lower().strip()
-
-
-import re  # noqa: E402
-
-
-def extract_law_numbers(law_str: str) -> List[str]:
-    """Extract standard law article numbers from strings like 'Điều 90', '90', or 'zalo_23/2018'."""
-    s = str(law_str).strip()
-    # If string contains "Điều X" or "điều X"
-    match = re.search(r"(?:điều|article)\s*(\d+)", s, re.IGNORECASE)
-    if match:
-        return [match.group(1)]
-    # Extract standalone numbers or numbers before slash
-    nums = re.findall(r"\b\d+\b", s)
-    return nums if nums else [s]
+from scripts.evaluation.calculate_step_metrics import (  # noqa: E402
+    extract_law_numbers,
+    normalize,
+)
 
 
 def law_precision_recall_f1(

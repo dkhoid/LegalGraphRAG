@@ -8,8 +8,8 @@ from typing import Optional, Dict, Any
 class ModelConfig:
     """Model configuration"""
 
-    model_name: str = "qwen3"
-    device: str = "cuda:0"
+    model_name: str = "deepseek_v3"
+    device: str = "cpu"
     prompt_language: str = "en"
     # OpenAI-type model configuration
     api_key: Optional[str] = None
@@ -83,6 +83,9 @@ class RetrieveConfig:
     max_applicable_laws: int = 8
     expand_abbreviations: bool = True
     rrf_k: int = 60
+    codex_boost_factor: float = 1.35
+    min_traversal_similarity: float = 0.40
+    smart_augment_gating: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format"""
@@ -107,6 +110,9 @@ class RetrieveConfig:
             "max_applicable_laws": self.max_applicable_laws,
             "expand_abbreviations": self.expand_abbreviations,
             "rrf_k": self.rrf_k,
+            "codex_boost_factor": self.codex_boost_factor,
+            "min_traversal_similarity": self.min_traversal_similarity,
+            "smart_augment_gating": self.smart_augment_gating,
         }
 
 
@@ -210,6 +216,15 @@ class LegalGraphRAGConfig:
                 "expand_abbreviations", defaults.retrieve.expand_abbreviations
             ),
             rrf_k=_env_int("rrf_k", defaults.retrieve.rrf_k),
+            codex_boost_factor=_env_float(
+                "codex_boost_factor", defaults.retrieve.codex_boost_factor
+            ),
+            min_traversal_similarity=_env_float(
+                "min_traversal_similarity", defaults.retrieve.min_traversal_similarity
+            ),
+            smart_augment_gating=_env_bool(
+                "smart_augment_gating", defaults.retrieve.smart_augment_gating
+            ),
         )
 
         graph_config = GraphConfig(

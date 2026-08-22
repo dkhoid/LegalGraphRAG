@@ -19,11 +19,24 @@ async def lifespan(app: FastAPI):
         config = LegalGraphRAGConfig.from_env_file(".env")
 
         # Override some properties based on env directly if needed
-        model_name = os.getenv("model_name")
+        model_name = os.getenv("model_name", config.model.model_name)
         if model_name:
             config.model.model_name = model_name
-            config.model.api_key = os.getenv(f"{model_name}_api_key", os.getenv("api_key"))
-            config.model.base_url = os.getenv(f"{model_name}_base_url", os.getenv("base_url"))
+            config.model.api_key = (
+                os.getenv(f"{model_name.upper()}_API_KEY")
+                or os.getenv(f"{model_name}_api_key")
+                or os.getenv("DEEPSEEK_API_KEY")
+                or os.getenv("GEMINI_API_KEY")
+                or os.getenv("OPENAI_API_KEY")
+                or os.getenv("api_key")
+                or config.model.api_key
+            )
+            config.model.base_url = (
+                os.getenv(f"{model_name.upper()}_BASE_URL")
+                or os.getenv(f"{model_name}_base_url")
+                or os.getenv("base_url")
+                or config.model.base_url
+            )
 
         graph_db_path = os.getenv("graph_db_path")
         if graph_db_path:
@@ -71,6 +84,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Mount API routes
 app.include_router(router)
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render/Kubernetes zero-downtime monitoring."""
+    return {"status": "ok", "service": "LegalGraphRAG API"}
 
 
 @app.get("/")

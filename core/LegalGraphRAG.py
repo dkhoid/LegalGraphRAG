@@ -49,28 +49,7 @@ class LegalGraphRAG:
 
     def _init_model(self) -> BaseModel:
         """Initialize model"""
-        from core.models import (
-            QwenChatbot,
-            Qwen2Chatbot,
-            GemmaChatbot,
-            InternlmChatbot,
-            GlmChatbot,
-            DeepSeekChatbot,
-            GPT4OMiniChatbot,
-            GeminiChatbot,
-        )
-
-        model_map = {
-            "qwen3": QwenChatbot,
-            "qwen2_5": Qwen2Chatbot,
-            "gemma3": GemmaChatbot,
-            "internlm3": InternlmChatbot,
-            "glm4": GlmChatbot,
-            "deepseek_v3": DeepSeekChatbot,
-            "gpt4o_mini": GPT4OMiniChatbot,
-            "gemini_flash": GeminiChatbot,
-            "gemini_flash_lite": GeminiChatbot,
-        }
+        model_name = self.config.model.model_name
 
         # Gemini model name mapping (SDK model IDs)
         gemini_model_ids = {
@@ -78,19 +57,27 @@ class LegalGraphRAG:
             "gemini_flash_lite": "gemini-2.0-flash-lite",
         }
 
-        model_class = model_map[self.config.model.model_name]
-
         # Gemini uses its own SDK, not OpenAI-compatible
-        if self.config.model.model_name in gemini_model_ids:
+        if model_name in gemini_model_ids:
+            from core.models.openai.gemini import GeminiChatbot
+
             return GeminiChatbot(
-                model_name=gemini_model_ids[self.config.model.model_name],
+                model_name=gemini_model_ids[model_name],
                 device=self.config.model.device,
                 api_key=self.config.model.api_key,
             )
 
-        # OpenAI-type models need special handling
-        if self.config.model.model_name in ["deepseek_v3", "gpt4o_mini"]:
-            # OpenAI-type models need model_name, api_key, base_url
+        # OpenAI-type cloud models (lightweight, zero PyTorch overhead)
+        if model_name in ["deepseek_v3", "gpt4o_mini"]:
+            if model_name == "deepseek_v3":
+                from core.models.openai.deepseek_v3 import DeepSeekChatbot
+
+                model_class = DeepSeekChatbot
+            else:
+                from core.models.openai.gpt4o_mini import GPT4OMiniChatbot
+
+                model_class = GPT4OMiniChatbot
+
             init_kwargs = {
                 "device": self.config.model.device,
             }
@@ -100,7 +87,23 @@ class LegalGraphRAG:
                 init_kwargs["base_url"] = self.config.model.base_url
             return model_class(**init_kwargs)
         else:
-            # Transformers-type models only need device
+            # Transformers-type local models (only imported on demand)
+            from core.models import (
+                QwenChatbot,
+                Qwen2Chatbot,
+                GemmaChatbot,
+                InternlmChatbot,
+                GlmChatbot,
+            )
+
+            model_map = {
+                "qwen3": QwenChatbot,
+                "qwen2_5": Qwen2Chatbot,
+                "gemma3": GemmaChatbot,
+                "internlm3": InternlmChatbot,
+                "glm4": GlmChatbot,
+            }
+            model_class = model_map[model_name]
             return model_class(device=self.config.model.device)
 
     def _load_cases_db(self) -> List[Dict[str, Any]]:

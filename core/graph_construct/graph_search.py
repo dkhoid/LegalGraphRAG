@@ -1,7 +1,7 @@
 import numpy as np
 from .graph_db import GraphDBManager
 
-from .llm_utils import get_embedding, rerank, _get_bm25_index, rerank_clusters
+from .llm_utils import get_embedding, _get_bm25_index
 
 
 def search_similar_nodes_top(model, query_embedding, query_text, top_k=5):

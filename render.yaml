@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: legal-graph-rag
+    env: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: model_name
+        value: deepseek_v3
+      - key: judge_chatbot
+        value: deepseek_v3
+      - key: device
+        value: cpu
+      # Set to false on Render 512MB RAM instance to avoid OOM
+      - key: use_reranker
+        value: "false"
+      - key: use_mmr
+        value: "false"
+      # Secure credentials - provide in Render dashboard
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USER
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false

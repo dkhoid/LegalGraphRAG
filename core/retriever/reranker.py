@@ -85,27 +85,36 @@ class CrossEncoderReranker:
         if not laws:
             return laws
 
-        self._load()
+        try:
+            self._load()
+            if self._model is None:
+                return laws[:top_k] if top_k else laws
 
-        pairs = [(query, law.get("description") or law.get("text") or "") for law in laws]
+            pairs = [(query, law.get("description") or law.get("text") or "") for law in laws]
 
-        scores = self._model.predict(pairs, batch_size=self.batch_size)
+            scores = self._model.predict(pairs, batch_size=self.batch_size)
 
-        # Attach score for debugging, then sort
-        scored = sorted(zip(scores, laws), key=lambda x: float(x[0]), reverse=True)
+            # Attach score for debugging, then sort
+            scored = sorted(zip(scores, laws), key=lambda x: float(x[0]), reverse=True)
 
-        k_limit = top_k if top_k is not None else self.top_k
-        result = []
-        for score, law in scored[:k_limit]:
-            law = dict(law)  # avoid mutating original
-            law["_rerank_score"] = round(float(score), 4)
-            result.append(law)
+            k_limit = top_k if top_k is not None else self.top_k
+            result = []
+            for score, law in scored[:k_limit]:
+                law = dict(law)  # avoid mutating original
+                law["_rerank_score"] = round(float(score), 4)
+                result.append(law)
 
-        logger.debug(
-            f"Reranked {len(laws)} laws → kept top {len(result)} "
-            f"(scores: {[r['_rerank_score'] for r in result[:3]]}...)"
-        )
-        return result
+            logger.debug(
+                f"Reranked {len(laws)} laws → kept top {len(result)} "
+                f"(scores: {[r['_rerank_score'] for r in result[:3]]}...)"
+            )
+            return result
+        except Exception as e:
+            logger.warning(
+                f"CrossEncoder reranker encountered an issue ({e}). "
+                "Falling back to original retrieved laws order."
+            )
+            return laws[:top_k] if top_k else laws
 
 
 # Module-level singleton – shared across requests to avoid repeated model loads

@@ -120,3 +120,66 @@ def preprocess_for_retrieval(text: str, expand: bool = True, remove_stops: bool 
     if remove_stops:
         text = remove_legal_stopwords(text)
     return text
+
+
+def parse_legal_identifier(entry: str) -> dict:
+    """Parse Vietnamese legal identifier string into structured components.
+
+    Format: [prefix]<doc_num>/<year>/<type>-<issuer>+<article>
+    Examples:
+        'zalo_45/2019/qh14+41' -> doc_type='CODE', doc_num='45', year=2019, article='41'
+        'zalo_21/2014/tt-bkhcn+5' -> doc_type='CIRCULAR', doc_num='21', year=2014, article='5'
+        'zalo_112/2020/nđ-cp+14' -> doc_type='DECREE', doc_num='112', year=2020, article='14'
+    """
+    if not isinstance(entry, str):
+        return {"entry": str(entry), "doc_type": "OTHER", "article": "", "is_primary_code": False}
+
+    s = entry.strip().lower()
+    # Strip prefixes like zalo_
+    s_clean = re.sub(r"^zalo_", "", s)
+
+    article = ""
+    doc_part = s_clean
+    if "+" in s_clean:
+        parts = s_clean.split("+", 1)
+        doc_part = parts[0]
+        article = parts[1].strip()
+
+    is_primary_code = False
+    doc_type = "OTHER"
+
+    if "qh" in doc_part or "blds" in doc_part or "blld" in doc_part or "blhs" in doc_part:
+        doc_type = "CODE"
+        is_primary_code = True
+    elif "ubtvqh" in doc_part:
+        doc_type = "ORDINANCE"
+        is_primary_code = True
+    elif "nđ-cp" in doc_part or "nd-cp" in doc_part:
+        doc_type = "DECREE"
+    elif "tt-" in doc_part or "ttlt-" in doc_part:
+        doc_type = "CIRCULAR"
+    elif "qđ-" in doc_part or "qd-" in doc_part:
+        doc_type = "DECISION"
+
+    return {
+        "raw": entry,
+        "doc_part": doc_part,
+        "doc_type": doc_type,
+        "article": article,
+        "is_primary_code": is_primary_code,
+    }
+
+
+def get_hierarchy_boost(entry: str, default_boost: float = 1.35) -> float:
+    """Calculate hierarchical rank weighting based on Vietnamese legal hierarchy.
+
+    Primary Codes (Quốc hội) > Ordinances > Decrees (Chính phủ) > Circulars (Bộ ngành).
+    """
+    parsed = parse_legal_identifier(entry)
+    if parsed["is_primary_code"]:
+        return default_boost
+    elif parsed["doc_type"] == "DECREE":
+        return 1.0
+    elif parsed["doc_type"] in ("CIRCULAR", "DECISION"):
+        return 0.8
+    return 1.0
