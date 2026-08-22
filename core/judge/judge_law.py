@@ -159,6 +159,7 @@ def judge_law_self_consistent(
     Returns:
         Tuple of (decision: bool, confidence: float, reasoning: str)
     """
+    import contextvars
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     sampler = judge_chatbot if judge_chatbot is not None else chatbot
@@ -172,8 +173,9 @@ def judge_law_self_consistent(
             return None
 
     workers = min(max(n_samples, 1), 5)
+    ctx = contextvars.copy_context()
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(_sample_once) for _ in range(n_samples)]
+        futures = [executor.submit(ctx.run, _sample_once) for _ in range(n_samples)]
         for f in as_completed(futures):
             res = f.result()
             if res is not None:

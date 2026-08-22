@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const apiKey = apiKeyInput.value.trim() || localStorage.getItem('legal_api_key');
-            const provider = (providerSelect ? providerSelect.value : null) || localStorage.getItem('legal_ai_provider') || 'openai';
+            const provider = (providerSelect ? providerSelect.value : null) || localStorage.getItem('legal_ai_provider') || 'deepseek';
 
             const response = await fetch('/analyze_civil', {
                 method: 'POST',
@@ -182,7 +182,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            if (!response.ok) throw new Error(`Lỗi server: ${response.status}`);
+            if (!response.ok) {
+                let errorMsg = `Lỗi server: ${response.status}`;
+                try {
+                    const errData = await response.json();
+                    if (errData && errData.detail) {
+                        errorMsg = errData.detail;
+                    }
+                } catch (_) {}
+                throw new Error(errorMsg);
+            }
 
             const data = await response.json();
 

@@ -22,6 +22,32 @@ from core.constants import PROVIDER_CONFIGS
 router = APIRouter()
 
 
+def _setup_request_context(provider: str = None, api_key: str = None):
+    """Resolve provider-specific API keys and base_url for per-request overrides."""
+    import os
+    from core.utils.context import request_api_key, request_base_url, request_model_name
+
+    effective_key = api_key.strip() if api_key and api_key.strip() else None
+    if not effective_key and provider:
+        p = provider.lower()
+        if "deepseek" in p:
+            effective_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("deepseek_api_key")
+        elif "gemini" in p:
+            effective_key = os.getenv("GEMINI_API_KEY") or os.getenv("gemini_api_key")
+        elif "openai" in p:
+            effective_key = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key")
+
+    request_api_key.set(effective_key)
+
+    if provider and provider in PROVIDER_CONFIGS:
+        provider_conf = PROVIDER_CONFIGS[provider]
+        request_base_url.set(provider_conf["base_url"])
+        request_model_name.set(provider_conf["model_name"])
+    else:
+        request_base_url.set(None)
+        request_model_name.set(None)
+
+
 @router.post("/generate_prompt", response_model=GeneratePromptResponse)
 async def generate_prompt(request: CaseRequest, req: Request):
     rag_system = req.app.state.rag_system
@@ -63,20 +89,10 @@ async def analyze_civil(request: CaseRequest, req: Request):
     if not rag_system:
         raise HTTPException(
             status_code=500,
-            detail="RAG system is not initialized. Please check startup logs.",
+            detail="Hệ thống RAG chưa được khởi tạo. Vui lòng kiểm tra log khởi động server.",
         )
 
-    from core.utils.context import request_api_key, request_base_url, request_model_name
-
-    request_api_key.set(request.api_key)
-
-    if request.provider and request.provider in PROVIDER_CONFIGS:
-        provider_conf = PROVIDER_CONFIGS[request.provider]
-        request_base_url.set(provider_conf["base_url"])
-        request_model_name.set(provider_conf["model_name"])
-    else:
-        request_base_url.set(None)
-        request_model_name.set(None)
+    _setup_request_context(request.provider, request.api_key)
 
     try:
         case_input = {"fact": request.fact, "name": ["Tổng quan vụ việc"]}
@@ -112,7 +128,10 @@ async def analyze_civil(request: CaseRequest, req: Request):
         raise e
     except Exception as e:
         logger.error(f"Analyze civil error: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error during LLM generation")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi xử lý phân tích pháp lý: {str(e)}",
+        )
 
 
 @router.post("/api/chat")
@@ -121,16 +140,7 @@ async def chat(request: ChatRequest, req: Request):
     if not rag_system:
         raise HTTPException(status_code=500, detail="RAG system is not initialized.")
 
-    from core.utils.context import request_api_key, request_base_url, request_model_name
-
-    request_api_key.set(request.api_key)
-    if request.provider and request.provider in PROVIDER_CONFIGS:
-        provider_conf = PROVIDER_CONFIGS[request.provider]
-        request_base_url.set(provider_conf["base_url"])
-        request_model_name.set(provider_conf["model_name"])
-    else:
-        request_base_url.set(None)
-        request_model_name.set(None)
+    _setup_request_context(request.provider, request.api_key)
 
     case_input = {"fact": request.query, "name": ["Tổng quan vụ việc"]}
     try:
