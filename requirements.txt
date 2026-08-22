@@ -28,3 +28,5 @@ pre-commit>=3.3.0
 neo4j>=5.14.0
 rank_bm25
 sentence-transformers>=2.2.0
+google-genai>=0.1.0
+httpx>=0.24.0

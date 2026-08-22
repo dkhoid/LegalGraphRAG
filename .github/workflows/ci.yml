@@ -18,6 +18,11 @@ jobs:
         ports:
           - 7687:7687
           - 7474:7474
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p password 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
     - uses: actions/checkout@v4
@@ -26,6 +31,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.10"
+        cache: 'pip'
 
     - name: Install dependencies
       run: |
@@ -38,6 +44,8 @@ jobs:
         OPENAI_API_KEY: dummy-ci-key
         EMBEDDING_API_KEY: dummy-ci-key
         GEMINI_API_KEY: dummy-ci-key
+        DEEPSEEK_API_KEY: dummy-ci-key
+        PYTHONPATH: .
         NEO4J_URI: bolt://localhost:7687
         NEO4J_USER: neo4j
         NEO4J_PASSWORD: password
