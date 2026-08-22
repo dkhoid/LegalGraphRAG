@@ -109,6 +109,13 @@ class LegalGraphRAG:
     def _load_cases_db(self) -> List[Dict[str, Any]]:
         """Load case database"""
         if not os.path.exists(self.config.data.case_db_path):
+            from core.graph_construct.neo4j_manager import neo4j_manager
+
+            if neo4j_manager.driver:
+                logger.info(
+                    f"Local case database not found ({self.config.data.case_db_path}), using Neo4j database."
+                )
+                return []
             raise FileNotFoundError(f"Case database not found: {self.config.data.case_db_path}")
         with open(self.config.data.case_db_path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -116,6 +123,13 @@ class LegalGraphRAG:
     def _load_law_to_dispute(self) -> List[Dict[str, Any]]:
         """Load law to crime mapping"""
         if not os.path.exists(self.config.data.law_to_dispute_path):
+            from core.graph_construct.neo4j_manager import neo4j_manager
+
+            if neo4j_manager.driver:
+                logger.info(
+                    f"Local law to dispute mapping not found ({self.config.data.law_to_dispute_path}), using Neo4j database."
+                )
+                return []
             raise FileNotFoundError(
                 f"Law to crime mapping not found: {self.config.data.law_to_dispute_path}"
             )

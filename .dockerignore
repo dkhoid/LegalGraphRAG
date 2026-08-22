@@ -45,10 +45,10 @@ desktop.ini
 
 # Data and heavy files (Avoid bloating Docker image)
 data/*
-!data/processed/
-data/processed/*
-!data/processed/cases_with_feature.json
-!data/processed/law_to_dispute.json
+!data/clean/
+data/clean/*
+!data/clean/cases_clean.json
+!data/clean/law_to_dispute_clean.json
 *.pkl
 *.pickle
 outputs/

@@ -77,7 +77,11 @@ outputs/
 *.local
 
 # Data and Logs
-data/
+data/*
+!data/clean/
+data/clean/*
+!data/clean/cases_clean.json
+!data/clean/law_to_dispute_clean.json
 logs/
 *.log
 
