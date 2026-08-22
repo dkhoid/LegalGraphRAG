@@ -173,9 +173,10 @@ def judge_law_self_consistent(
             return None
 
     workers = min(max(n_samples, 1), 5)
-    ctx = contextvars.copy_context()
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(ctx.run, _sample_once) for _ in range(n_samples)]
+        futures = [
+            executor.submit(contextvars.copy_context().run, _sample_once) for _ in range(n_samples)
+        ]
         for f in as_completed(futures):
             res = f.result()
             if res is not None:
