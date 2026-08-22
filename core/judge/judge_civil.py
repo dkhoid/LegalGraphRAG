@@ -1,5 +1,48 @@
 import json
+import re
 from core.prompt import get_prompt
+
+
+def normalize_law_article(raw: str) -> str:
+    """Normalise a law article string returned by the LLM.
+
+    Strips common noise patterns so the output matches evaluation ground-truth:
+    - Garbage prefixes: ``zalo_``, ``Article `` (English), leading whitespace
+    - Legislation codes embedded in the string: ``/2019/QH14``, ``/2015/ND-CP`` …
+    - Plus-sign suffixes used in graph IDs: ``45/2019/qh14+132`` → ``Điều 132``
+    - Condenses to the canonical ``Điều N`` form when possible.
+
+    Examples::
+
+        "zalo_45/2019/qh14+132" → "Điều 132"
+        "Article zalo_45/2019/qh14+11" → "Điều 11"
+        "Điều 28/2016/tt-blđtbxh+11" → "Điều 11"
+        "Điều 36" → "Điều 36"
+        "36" → "Điều 36"
+    """
+    if not isinstance(raw, str):
+        return str(raw)
+
+    s = raw.strip()
+    # Remove known garbage prefixes (case-insensitive)
+    s = re.sub(r"(?i)^(zalo_|article\s*)", "", s).strip()
+    # Remove Vietnamese "Điều" / "dieu" prefix before processing
+    s_stripped = re.sub(r"(?i)^(\u0111i\u1ec1u|dieu)\s*", "", s).strip()
+
+    # If there's a '+' take only the last segment (graph ID format)
+    if "+" in s_stripped:
+        s_stripped = s_stripped.split("+")[-1].strip()
+
+    # Strip legislation-code suffix like /2019/QH14, /2015/ND-CP
+    s_stripped = re.sub(r"/\d{4}/[a-z0-9\-]+", "", s_stripped, flags=re.IGNORECASE).strip()
+
+    # Extract the first number that is NOT a year (< 2000)
+    nums = [n for n in re.findall(r"\b(\d+)\b", s_stripped) if int(n) < 2000]
+    if nums:
+        return f"Điều {nums[0]}"
+
+    # Fallback: return the cleaned string as-is
+    return s.strip()
 
 
 def format_law(law_used):
@@ -51,12 +94,20 @@ def judge_civil_all(chatbot, law_used, retrieved_facts, case_description):
         first = response.find("{")
         last = response.rfind("}") + 1
         response = response[first:last]
-        response = json.loads(response)
+        result = json.loads(response)
+
+        # Normalize law_article entries to remove noise from LLM output
+        raw_laws = result.get("law_article", [])
+        if isinstance(raw_laws, list):
+            result["law_article"] = [normalize_law_article(l) for l in raw_laws]
+        elif isinstance(raw_laws, str):
+            result["law_article"] = [normalize_law_article(raw_laws)]
+
+        return result
     except Exception as e:
         print(f"Error parsing response: {e}")
-        response = {
+        return {
             "dispute_type": ["No applicable issue identified"],
             "law_article": ["N/A"],
             "resolution": {"liability": "N/A", "compensation": "N/A"},
         }
-    return response

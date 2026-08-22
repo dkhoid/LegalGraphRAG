@@ -6,7 +6,7 @@ Centralized constants for LegalGraphRAG.
 PROVIDER_CONFIGS = {
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "model_name": "gemini-1.5-flash",
+        "model_name": "gemini-3.5-flash",
     },
     "deepseek": {
         "base_url": "https://api.deepseek.com/v1",

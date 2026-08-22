@@ -7,6 +7,32 @@ _bm25_instance = None
 _bm25_law_mapping = None
 
 
+def _tokenize_vi(text: str) -> list:
+    """Tokenize Vietnamese text for BM25.
+
+    Priority:
+    1. ``underthesea.word_tokenize`` – best quality for Vietnamese
+    2. ``pyvi.ViTokenizer.tokenize`` – lightweight alternative
+    3. Whitespace split – original fallback (always works)
+
+    The result is always a list of lowercase strings.
+    """
+    text = text.lower()
+    try:
+        from underthesea import word_tokenize  # type: ignore
+
+        return word_tokenize(text, format="text").split()
+    except Exception:
+        pass
+    try:
+        from pyvi import ViTokenizer  # type: ignore
+
+        return ViTokenizer.tokenize(text).split()
+    except Exception:
+        pass
+    return text.split()
+
+
 def _get_bm25_index():
     global _bm25_instance, _bm25_law_mapping
     if _bm25_instance is not None:
@@ -35,7 +61,7 @@ def _get_bm25_index():
                         }
                     )
         if corpus:
-            tokenized_corpus = [doc.lower().split() for doc in corpus]
+            tokenized_corpus = [_tokenize_vi(doc) for doc in corpus]
             _bm25_instance = BM25Okapi(tokenized_corpus)
             _bm25_law_mapping = law_mapping
     except Exception as e:
@@ -160,3 +186,11 @@ def rerank(model, query_text, neighbors):
     neighbors = [n for n in neighbors if n["rank"] in ranked_indices]
     neighbors = sorted(neighbors, key=lambda x: ranked_indices.index(x["rank"]))
     return neighbors
+
+
+def generate_hyde_query(model, query_text):
+    from core.prompt import get_prompt
+
+    prompt = get_prompt("HYDE_PROMPT").format(query_text=query_text)
+    response = model.generate_response(prompt, max_length=512)
+    return response.strip()

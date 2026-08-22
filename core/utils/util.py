@@ -21,8 +21,13 @@ def filter_facts(retrieved_laws, retrieved_facts):
     Returns:
     Filtered list of facts
     """
-    # Extract all ids from retrieved_laws into a set
-    law_ids = {str(law["id"]) for law in retrieved_laws}
+    # Extract all ids and entries from retrieved_laws into a set
+    law_ids = set()
+    for law in retrieved_laws:
+        if "id" in law:
+            law_ids.add(str(law["id"]))
+        if "entry" in law and law["entry"]:
+            law_ids.add(str(law["entry"]))
 
     # Filter facts: keep only those where at least one law id matches
     filtered_facts = [
@@ -168,17 +173,22 @@ def _get_judge_chatbot(model_name: str):
     if model_name in _judge_chatbot_cache:
         return _judge_chatbot_cache[model_name]
 
-    from core.models.openai.gemini import GeminiChatbot
+    # Support gemini and openai models
+    if "gemini" in model_name:
+        from core.models.openai.gemini import GeminiChatbot
 
-    gemini_ids = {
-        "gemini_flash_lite": "gemini-3.5-flash-lite",
-        "gemini_flash": "gemini-3.5-flash",
-    }
-    if model_name not in gemini_ids:
-        raise ValueError(
-            f"Unknown judge_chatbot '{model_name}'. " f"Supported: {list(gemini_ids.keys())}"
-        )
+        gemini_ids = {
+            "gemini_flash_lite": "gemini-3.5-flash-lite",
+            "gemini_flash": "gemini-3.5-flash",
+        }
+        actual_model_name = gemini_ids.get(model_name, model_name)
+        bot = GeminiChatbot(model_name=actual_model_name)
+    else:
+        # Fallback to GPT4OMiniChatbot for gpt4o_mini, etc.
+        from core.models.openai.gpt4o_mini import GPT4OMiniChatbot
 
-    bot = GeminiChatbot(model_name=gemini_ids[model_name])
+        actual_model_name = "gpt-4o-mini" if "mini" in model_name else model_name
+        bot = GPT4OMiniChatbot(model_name=actual_model_name)
+
     _judge_chatbot_cache[model_name] = bot
     return bot

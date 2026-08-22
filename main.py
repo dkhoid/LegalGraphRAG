@@ -31,12 +31,6 @@ async def lifespan(app: FastAPI):
 
         rag_system = LegalGraphRAG(config=config)
 
-        # Keep app.py's specific retrieve settings
-        rag_system.config.retrieve.to_dict = lambda: {
-            "method": "vector",
-            "direct_retrieve_top_k": 3,
-        }
-
         # Store in app state
         app.state.rag_system = rag_system
 
@@ -86,4 +80,6 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    is_prod = os.getenv("ENVIRONMENT") == "production" or os.getenv("RENDER") == "true"
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=not is_prod)

@@ -64,17 +64,17 @@ class RetrieveConfig:
     top_retrieve: bool = True
     direct_retrieve: bool = True
     augment_retrieve: bool = True
-    top_retrieve_top_k: int = 5
-    direct_retrieve_top_k: int = 5
+    top_retrieve_top_k: int = 10
+    direct_retrieve_top_k: int = 10
     batch_judge: bool = True
 
     # New advanced pipeline features
-    use_reranker: bool = False
+    use_reranker: bool = True
     reranker_top_k: int = 8
-    use_self_consistent: bool = False
+    use_self_consistent: bool = True
     self_consistent_n: int = 3
-    judge_chatbot: str = "gemini_flash_lite"
-    use_mmr: bool = False
+    judge_chatbot: str = "gpt4o-mini"
+    use_mmr: bool = True
     mmr_lambda: float = 0.5
     mmr_top_k: int = 5
     min_rrf_score: float = 0.0
@@ -133,7 +133,9 @@ class LegalGraphRAGConfig:
     @classmethod
     def from_env_file(cls, dotenv_path: str = ".env") -> "LegalGraphRAGConfig":
         """
-        Load configuration from .env file
+        Load configuration from .env file.
+        Dataclass field defaults are the single source of truth.
+        Only values explicitly defined in the .env file will override them.
 
         Args:
             dotenv_path: Path to .env file
@@ -143,60 +145,79 @@ class LegalGraphRAGConfig:
         """
         from dotenv import load_dotenv
 
-        load_dotenv(dotenv_path=dotenv_path)
+        load_dotenv(dotenv_path=dotenv_path, override=True)
 
-        # Model configuration
+        defaults = cls()
+
+        def _env_str(key: str, default: str) -> str:
+            return os.getenv(key) if os.getenv(key) is not None else default
+
+        def _env_bool(key: str, default: bool) -> bool:
+            v = os.getenv(key)
+            return v.lower() in ("1", "true", "yes") if v is not None else default
+
+        def _env_int(key: str, default: int) -> int:
+            v = os.getenv(key)
+            return int(v) if v is not None else default
+
+        def _env_float(key: str, default: float) -> float:
+            v = os.getenv(key)
+            return float(v) if v is not None else default
+
         model_config = ModelConfig(
-            model_name=os.getenv("model_name", "gpt4o_mini"),
-            device=os.getenv("device", "cpu"),
-            prompt_language=os.getenv("prompt_language", "en"),
-            api_key=os.getenv("api_key"),
-            base_url=os.getenv("base_url"),
-            max_length=int(os.getenv("max_length", 4096)),
-            temperature=float(os.getenv("temperature", 0.1)),
+            model_name=_env_str("model_name", defaults.model.model_name),
+            device=_env_str("device", defaults.model.device),
+            prompt_language=_env_str("prompt_language", defaults.model.prompt_language),
+            api_key=os.getenv("api_key", defaults.model.api_key),
+            base_url=os.getenv("base_url", defaults.model.base_url),
+            max_length=_env_int("max_length", defaults.model.max_length),
+            temperature=_env_float("temperature", defaults.model.temperature),
         )
 
-        # Data configuration
         data_config = DataConfig(
-            case_db_path=os.getenv("case_db_path", "./data/clean/cases_clean.json"),
-            law_to_dispute_path=os.getenv(
-                "law_to_dispute_path", "./data/clean/law_to_dispute_clean.json"
-            ),
-            datasets_path=os.getenv("datasets_path"),
-            output_dir=os.getenv("output_dir", "./data/outputs"),
+            case_db_path=_env_str("case_db_path", defaults.data.case_db_path),
+            law_to_dispute_path=_env_str("law_to_dispute_path", defaults.data.law_to_dispute_path),
+            datasets_path=os.getenv("datasets_path", defaults.data.datasets_path),
+            output_dir=_env_str("output_dir", defaults.data.output_dir),
         )
 
-        # Retrieval configuration
         retrieve_config = RetrieveConfig(
-            top_retrieve=os.getenv("top_retrieve", "True") == "True",
-            direct_retrieve=os.getenv("direct_retrieve", "True") == "True",
-            augment_retrieve=os.getenv("augment_retrieve", "True") == "True",
-            top_retrieve_top_k=int(os.getenv("top_retrieve_top_k", 5)),
-            direct_retrieve_top_k=int(os.getenv("direct_retrieve_top_k", 5)),
-            batch_judge=os.getenv("batch_judge", "True") == "True",
-            use_reranker=os.getenv("use_reranker", "False") == "True",
-            reranker_top_k=int(os.getenv("reranker_top_k", 8)),
-            use_self_consistent=os.getenv("use_self_consistent", "False") == "True",
-            self_consistent_n=int(os.getenv("self_consistent_n", 3)),
-            judge_chatbot=os.getenv("judge_chatbot", "gemini_flash_lite"),
-            use_mmr=os.getenv("use_mmr", "False") == "True",
-            mmr_lambda=float(os.getenv("mmr_lambda", 0.5)),
-            mmr_top_k=int(os.getenv("mmr_top_k", 5)),
-            min_rrf_score=float(os.getenv("min_rrf_score", 0.0)),
-            law_desc_cap=int(os.getenv("law_desc_cap", 600)),
-            max_judge_laws=int(os.getenv("max_judge_laws", 8)),
-            max_applicable_laws=int(os.getenv("max_applicable_laws", 8)),
-            expand_abbreviations=os.getenv("expand_abbreviations", "True") == "True",
-            rrf_k=int(os.getenv("rrf_k", 60)),
+            top_retrieve=_env_bool("top_retrieve", defaults.retrieve.top_retrieve),
+            direct_retrieve=_env_bool("direct_retrieve", defaults.retrieve.direct_retrieve),
+            augment_retrieve=_env_bool("augment_retrieve", defaults.retrieve.augment_retrieve),
+            top_retrieve_top_k=_env_int("top_retrieve_top_k", defaults.retrieve.top_retrieve_top_k),
+            direct_retrieve_top_k=_env_int(
+                "direct_retrieve_top_k", defaults.retrieve.direct_retrieve_top_k
+            ),
+            batch_judge=_env_bool("batch_judge", defaults.retrieve.batch_judge),
+            use_reranker=_env_bool("use_reranker", defaults.retrieve.use_reranker),
+            reranker_top_k=_env_int("reranker_top_k", defaults.retrieve.reranker_top_k),
+            use_self_consistent=_env_bool(
+                "use_self_consistent", defaults.retrieve.use_self_consistent
+            ),
+            self_consistent_n=_env_int("self_consistent_n", defaults.retrieve.self_consistent_n),
+            judge_chatbot=_env_str("judge_chatbot", defaults.retrieve.judge_chatbot),
+            use_mmr=_env_bool("use_mmr", defaults.retrieve.use_mmr),
+            mmr_lambda=_env_float("mmr_lambda", defaults.retrieve.mmr_lambda),
+            mmr_top_k=_env_int("mmr_top_k", defaults.retrieve.mmr_top_k),
+            min_rrf_score=_env_float("min_rrf_score", defaults.retrieve.min_rrf_score),
+            law_desc_cap=_env_int("law_desc_cap", defaults.retrieve.law_desc_cap),
+            max_judge_laws=_env_int("max_judge_laws", defaults.retrieve.max_judge_laws),
+            max_applicable_laws=_env_int(
+                "max_applicable_laws", defaults.retrieve.max_applicable_laws
+            ),
+            expand_abbreviations=_env_bool(
+                "expand_abbreviations", defaults.retrieve.expand_abbreviations
+            ),
+            rrf_k=_env_int("rrf_k", defaults.retrieve.rrf_k),
         )
 
-        # Graph configuration
         graph_config = GraphConfig(
-            graph_db_path=os.getenv("graph_db_path"),
-            embedding_api_url=os.getenv("embedding_api_url", "http://localhost:11434/api/embed"),
-            embedding_model=os.getenv("embedding_model", "bge-m3"),
-            auto_save=os.getenv("auto_save", "True") == "True",
-            auto_build=os.getenv("auto_build", "True") == "True",
+            graph_db_path=os.getenv("graph_db_path", defaults.graph.graph_db_path),
+            embedding_api_url=_env_str("embedding_api_url", defaults.graph.embedding_api_url),
+            embedding_model=_env_str("embedding_model", defaults.graph.embedding_model),
+            auto_save=_env_bool("auto_save", defaults.graph.auto_save),
+            auto_build=_env_bool("auto_build", defaults.graph.auto_build),
         )
 
         return cls(

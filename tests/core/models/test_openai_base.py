@@ -14,8 +14,13 @@ class TestOpenAIBaseModel(unittest.TestCase):
 
     @patch.dict("os.environ", clear=True)
     def test_init_no_api_key(self):
+        # OpenAIBaseModel allows initialization without API key (to allow dynamic web input)
+        model = OpenAIBaseModel(model_name="test_model", base_url="http://fake")
+        self.assertEqual(model.api_key, "")
+        self.assertIsNone(model.client)
+        # But calling generate_response without key will raise ValueError
         with self.assertRaises(ValueError):
-            OpenAIBaseModel(model_name="test_model", base_url="http://fake")
+            model.generate_response("test prompt")
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "fake_key"})
     def test_init_no_base_url(self):

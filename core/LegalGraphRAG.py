@@ -74,8 +74,8 @@ class LegalGraphRAG:
 
         # Gemini model name mapping (SDK model IDs)
         gemini_model_ids = {
-            "gemini_flash": "gemini-2.0-flash",
-            "gemini_flash_lite": "gemini-2.0-flash-lite",
+            "gemini_flash": "gemini-3.5-flash",
+            "gemini_flash_lite": "gemini-3.5-flash-lite",
         }
 
         model_class = model_map[self.config.model.model_name]

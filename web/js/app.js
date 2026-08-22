@@ -167,9 +167,61 @@ document.addEventListener('DOMContentLoaded', () => {
                 usedLaws.forEach(law => {
                     const span = document.createElement('span');
                     span.className = 'law-tag';
-                    // Show Law ID or description
-                    span.textContent = law.id || 'Luật';
-                    if(law.text) span.title = law.text;
+
+                    // Format Raw ID (e.g. zalo_01/2011/qh13+24 -> Điều 24, Luật 01/2011/QH13)
+                    let displayId = law.entry || law.id || 'Điều luật';
+
+                    if (displayId && displayId.length === 36 && displayId.includes('-')) {
+                        // Hide UUIDs
+                        displayId = 'Điều luật liên quan';
+                    } else if (displayId.includes('+')) {
+                        const parts = displayId.replace('zalo_', '').split('+');
+                        const doc = parts[0].toUpperCase();
+                        const article = parts[1];
+
+                        // Map common Zalo AI challenge laws
+                        const lawMap = {
+                            "91/2015/QH13": "Bộ luật Dân sự 2015",
+                            "100/2015/QH13": "Bộ luật Hình sự 2015",
+                            "92/2015/QH13": "Bộ luật Tố tụng dân sự 2015",
+                            "101/2015/QH13": "Bộ luật Tố tụng hình sự 2015",
+                            "52/2014/QH13": "Luật Hôn nhân và Gia đình 2014",
+                            "45/2013/QH13": "Luật Đất đai 2013",
+                            "66/2014/QH13": "Luật Kinh doanh bất động sản 2014",
+                            "58/2014/QH13": "Luật Bảo hiểm xã hội 2014",
+                            "59/2014/QH13": "Luật Doanh nghiệp 2014",
+                            "67/2014/QH13": "Luật Đầu tư 2014",
+                            "14/2012/QH13": "Luật Xử lý vi phạm hành chính",
+                            "38/2019/QH14": "Luật Quản lý thuế 2019"
+                        };
+
+                        const lawName = lawMap[doc] || `Văn bản ${doc}`;
+                        displayId = `Điều ${article}, ${lawName}`;
+                    } else if (displayId.startsWith('zalo_')) {
+                        displayId = displayId.replace('zalo_', '').toUpperCase();
+                    }
+
+                    // Add text preview
+                    if (law.description) {
+                        let preview = law.description.split('\n')[0].trim();
+                        if (preview.length > 80) preview = preview.substring(0, 80) + '...';
+
+                        // If it's a UUID, we completely replaced it with "Điều luật liên quan" above
+                        // It's better to just show the preview
+                        if (displayId === 'Điều luật liên quan') {
+                            displayId = preview;
+                        } else {
+                            displayId = `<strong>${displayId}</strong>: ${preview}`;
+                        }
+                    }
+
+                    span.innerHTML = displayId;
+
+                    const lawText = law.text || law.description || '';
+                    if (lawText) {
+                        span.title = lawText;
+                        span.style.cursor = 'help';
+                    }
                     lawsEl.appendChild(span);
                 });
             } else {
@@ -183,8 +235,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 usedFacts.forEach(fact => {
                     const div = document.createElement('div');
                     div.className = 'evidence-card';
-                    div.innerHTML = `<p>${escapeHtml(fact.fact || fact.text || '')}</p>
-                                     <span class="evidence-source">Độ tương đồng: ${Math.round((fact.similarity || 0)*100)}%</span>`;
+                    const factText = fact.fact || fact.text || fact.description || '';
+                    div.innerHTML = `<p>${escapeHtml(factText)}</p>
+                                     <span class="evidence-source">Nguồn Graph DB</span>`;
                     factsEl.appendChild(div);
                 });
             } else {
@@ -193,7 +246,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Resolution
             const resEl = contentDiv.querySelector('.resolution-content');
-            const resText = escapeHtml(judgeRes.resolution_direction || 'Chưa có phân tích chi tiết.').replace(/\n/g, '<br>');
+            let resText = 'Chưa có phân tích chi tiết.';
+            if (judgeRes.resolution) {
+                if (typeof judgeRes.resolution === 'string') {
+                    resText = judgeRes.resolution;
+                } else {
+                    resText = `<strong>Trách nhiệm:</strong> ${judgeRes.resolution.liability || 'N/A'}<br><br><strong>Hướng xử lý:</strong> ${judgeRes.resolution.compensation || 'N/A'}`;
+                }
+            } else if (judgeRes.resolution_direction) {
+                resText = escapeHtml(judgeRes.resolution_direction).replace(/\n/g, '<br>');
+            }
             resEl.innerHTML = `<p>${resText}</p>`;
 
             // Trace Log

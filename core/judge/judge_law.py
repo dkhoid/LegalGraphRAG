@@ -109,9 +109,11 @@ def judge_law_batch(chatbot, case_description: str, law: dict) -> tuple:
         applicable = bool(parsed.get("applicable", False))
         reasoning = str(parsed.get("conditions", []))
         return applicable, reasoning
-    except Exception:
-        # Safe fallback: never crash, just use the original method
-        return judge_law(chatbot, case_description, law)
+    except Exception as e:
+        # Safe fallback: avoid explosive request cascade by just assuming it's true
+        # and letting the LLM decide later in the final pipeline step.
+        print(f"Batch judge parsing failed: {e}. Defaulting to applicable.")
+        return True, "Parsing failed, defaulted to True"
 
 
 def judge_law_self_consistent(

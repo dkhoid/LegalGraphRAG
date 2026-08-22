@@ -74,7 +74,7 @@ async def analyze_civil(request: CaseRequest, req: Request):
         request_model_name.set(provider_conf["model_name"])
 
     try:
-        case_input = {"fact": request.fact, "name": ["Nguyên đơn", "Bị đơn"]}
+        case_input = {"fact": request.fact, "name": ["Tổng quan vụ việc"]}
         results_list = await run_in_threadpool(rag_system.analyze_case, case_input)
 
         parsed_results = []
@@ -124,7 +124,7 @@ async def chat(request: ChatRequest, req: Request):
         request_base_url.set(provider_conf["base_url"])
         request_model_name.set(provider_conf["model_name"])
 
-    case_input = {"fact": request.query, "name": ["Nguyên đơn", "Bị đơn"]}
+    case_input = {"fact": request.query, "name": ["Tổng quan vụ việc"]}
     try:
         results = await run_in_threadpool(rag_system.analyze_case, case_input)
 

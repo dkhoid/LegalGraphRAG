@@ -216,7 +216,9 @@ def query_similar_nodes(model, query_text, retrieve_config):
     bm25, law_mapping = _get_bm25_index()
     if bm25 and law_mapping:
         try:
-            tokenized_query = query_text.lower().split()
+            from core.graph_construct.llm_utils import _tokenize_vi
+
+            tokenized_query = _tokenize_vi(query_text)
             bm25_scores = bm25.get_scores(tokenized_query)
             top_k_bm25 = 5
             top_indices = sorted(
@@ -374,45 +376,94 @@ def query_similar_laws_naive(query_text, top_k=1):
 
 def query_similar_laws(dispute_list, top_k=1):
     """
-    Query law nodes related to the most similar crime nodes based on a list of crime descriptions.
+    Query law nodes related to the most similar dispute nodes based on a list of dispute descriptions.
+    Prefers Neo4j vector search when available; falls back to the in-memory graph otherwise.
 
     Args:
-        dispute_list (list[str]): List of crime descriptions as strings.
-        top_k (int): Number of top similar crime nodes to retrieve per crime description.
+        dispute_list (list[str]): List of dispute descriptions as strings.
+        top_k (int): Number of top similar law nodes to retrieve per description.
 
     Returns:
         list[dict]: List of law nodes with their details, deduplicated.
     """
+    from core.graph_construct.neo4j_manager import neo4j_manager
+
+    if neo4j_manager.driver:
+        return _query_similar_laws_neo4j(dispute_list, top_k)
+    return _query_similar_laws_inmemory(dispute_list, top_k)
+
+
+def _query_similar_laws_neo4j(dispute_list, top_k=1):
+    """Query laws directly from Neo4j law_embeddings index."""
+    from core.graph_construct.neo4j_manager import neo4j_manager
+
+    result_laws = []
+    seen_law_ids = set()
+
+    with neo4j_manager.driver.session() as session:
+        for dispute in dispute_list:
+            dispute_embedding = get_embedding(dispute)
+            if dispute_embedding is None:
+                continue
+
+            try:
+                law_vector_query = """
+                CALL db.index.vector.queryNodes('law_embeddings', $top_k, $embedding)
+                YIELD node AS law, score
+                RETURN law, score
+                ORDER BY score DESC
+                """
+                results = session.run(law_vector_query, top_k=top_k, embedding=dispute_embedding)
+                for record in results:
+                    law_node = record["law"]
+                    if law_node and law_node["id"] not in seen_law_ids:
+                        seen_law_ids.add(law_node["id"])
+                        result_laws.append(
+                            {
+                                "id": law_node["id"],
+                                "entry": law_node.get("entry"),
+                                "description": law_node.get("description", ""),
+                                "disputes": law_node.get("disputes", []),
+                                "judge_dep": law_node.get("judge_dep", "[]"),
+                                "related_laws": law_node.get("related_laws", "[]"),
+                                "dispute_similarity": record["score"],
+                            }
+                        )
+            except Exception as e:
+                print(f"Neo4j law augment search error: {e}")
+
+    result_laws = sorted(result_laws, key=lambda x: x.get("dispute_similarity", 0), reverse=True)
+    for rank, law in enumerate(result_laws, 1):
+        law["rank"] = rank
+    return result_laws
+
+
+def _query_similar_laws_inmemory(dispute_list, top_k=1):
+    """Fallback: query laws from the in-memory graph (used when Neo4j is unavailable)."""
     db = GraphDBManager.get_db()
     result_laws = []
-    seen_law_ids = set()  # For deduplication of law nodes
+    seen_law_ids = set()
 
     for dispute in dispute_list:
-        # Convert crime description to embedding
         dispute_embedding = get_embedding(dispute)
         if dispute_embedding is None:
-            continue  # Skip if embedding generation fails
+            continue
 
-        # Query the most similar crime nodes
         dispute_results = db.find_similar_nodes(dispute_embedding, "Disputes", top_k=top_k)
 
-        # Process each similar crime node
         for dispute_record in dispute_results:
             dispute_id = dispute_record["id"]
             dispute_similarity = dispute_record["similarity"]
 
-            # Query law nodes related to this crime node
-            # Find all Law nodes that point to this issue node
             for node_id, node_info in db.nodes_data.items():
                 if node_info["type"] == "Laws":
                     neighbors = db.get_neighbors(node_id, "RELATED_DISPUTE")
                     if dispute_id in neighbors:
                         law_data = node_info["data"]
-                        law_id = node_id
-                        if law_id not in seen_law_ids:
+                        if node_id not in seen_law_ids:
                             result_laws.append(
                                 {
-                                    "id": law_id,
+                                    "id": node_id,
                                     "entry": law_data.get("entry"),
                                     "description": law_data.get("description"),
                                     "disputes": law_data.get("disputes"),
@@ -422,11 +473,9 @@ def query_similar_laws(dispute_list, top_k=1):
                                     "dispute_similarity": dispute_similarity,
                                 }
                             )
-                            seen_law_ids.add(law_id)
+                            seen_law_ids.add(node_id)
 
-    # Sort results by crime similarity (descending) and assign ranks
     result_laws = sorted(result_laws, key=lambda x: x["dispute_similarity"], reverse=True)
     for rank, law in enumerate(result_laws, 1):
         law["rank"] = rank
-
     return result_laws

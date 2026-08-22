@@ -138,10 +138,11 @@ Bạn là trợ lý pháp lý chuyên nghiệp. Đánh giá xem điều luật s
 
 **Vụ án:** {case}
 
-**Hướng dẫn:**
+**Hướng dẫn TỐI QUAN TRỌNG (BỘ LỌC THÔ):**
 - Kiểm tra từng yếu tố được đánh số xem tình tiết vụ án có đáp ứng không.
-- Nếu phần lớn yếu tố được đáp ứng, hoặc vụ án có liên quan mật thiết, hãy đặt "applicable": true.
-- Chỉ đặt "applicable": false khi điều luật hoàn toàn không liên quan đến vụ án.
+- Nếu điều luật có CHÚT ÍT KHẢ NĂNG liên quan, HOẶC không có thông tin mâu thuẫn rõ ràng, BẮT BUỘC phải đặt "applicable": true.
+- CHỈ đặt "applicable": false khi bạn CHẮC CHẮN 100% điều luật này hoàn toàn lạc đề (ví dụ: vụ án dân sự nhưng luật là luật hình sự).
+- Thà giữ nhầm còn hơn bỏ sót.
 
 **Trả về DUY NHẤT một JSON object, không có text nào khác:**
 {{"conditions": [{{"id": 1, "met": true, "reason": "lý do ngắn gọn"}}], "applicable": true}}

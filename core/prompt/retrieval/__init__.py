@@ -23,6 +23,22 @@ Tình tiết vụ án:
 Bây giờ vui lòng xuất ra:
 """
 
+HYDE_PROMPT = """Bạn là một hệ thống tìm kiếm pháp luật thông minh (HyDE - Hypothetical Document Embeddings).
+Nhiệm vụ của bạn là đọc các thông tin trích xuất từ một vụ việc thực tế, sau đó VIẾT LẠI thành một ĐOẠN VĂN BẢN HƯ CẤU giống hệt như văn phong của một điều luật hoặc một bản án mẫu.
+
+**Yêu cầu:**
+- Độ dài khoảng 3-4 câu.
+- Dùng từ ngữ pháp lý chuẩn xác (ví dụ: người lao động, người sử dụng lao động, bồi thường thiệt hại ngoài hợp đồng, tài sản thừa kế...).
+- Tập trung vào HÀNH VI, QUYỀN và NGHĨA VỤ pháp lý.
+- KHÔNG giải thích, KHÔNG lặp lại tên người, KHÔNG phân tích vụ án. CHỈ viết ra đoạn văn bản giả định.
+
+**Thông tin vụ việc:**
+{query_text}
+
+**Đoạn văn bản pháp luật giả định:**
+"""
+
 __all__ = [
     "RETRIEVE_LAW_PROMPT",
+    "HYDE_PROMPT",
 ]

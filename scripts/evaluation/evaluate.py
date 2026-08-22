@@ -1,3 +1,8 @@
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from core.utils.logger import logger
 import argparse
 import os
@@ -40,6 +45,8 @@ def process_cases_worker(
     correct_count = 0
 
     try:
+        from scripts.evaluation.calculate_step_metrics import extract_law_numbers, dispute_hit
+
         for case in tqdm(cases, desc=f"Processing on {device} with {model_name}"):
             fact = case.get("fact", "")
             true_dispute = case.get("dispute", [])
@@ -56,6 +63,51 @@ def process_cases_worker(
                     "law_article": law_article,
                 }
             )
+
+            # Evaluate correctness
+            if case_res and len(case_res) > 0:
+                res = case_res[0]
+                judge_result = res.get("judge_result", {})
+
+                # Check Dispute
+                pred_disputes = []
+                if isinstance(judge_result, dict):
+                    charges = judge_result.get("dispute_type", [])
+                    if isinstance(charges, list):
+                        pred_disputes.extend(charges)
+                    elif isinstance(charges, str):
+                        pred_disputes.append(charges)
+                elif isinstance(judge_result, list):
+                    pred_disputes.extend(judge_result)
+
+                true_disputes_list = (
+                    true_dispute if isinstance(true_dispute, list) else [true_dispute]
+                )
+                is_dispute_correct = dispute_hit(pred_disputes, true_disputes_list)
+
+                # Check Law
+                true_laws = law_article if isinstance(law_article, list) else [law_article]
+                true_law_nums = set()
+                for tl in true_laws:
+                    true_law_nums.update(extract_law_numbers(tl))
+
+                pred_laws = []
+                if isinstance(judge_result, dict):
+                    final_law = judge_result.get("law_article", "")
+                    if isinstance(final_law, list):
+                        pred_laws.extend(final_law)
+                    elif isinstance(final_law, str):
+                        pred_laws.append(final_law)
+
+                pred_law_nums = set()
+                for pl in pred_laws:
+                    pred_law_nums.update(extract_law_numbers(pl))
+
+                is_law_correct = bool(true_law_nums and true_law_nums.intersection(pred_law_nums))
+
+                # Case is correctly classified if both dispute and law article are correct
+                if is_dispute_correct and is_law_correct:
+                    correct_count += 1
 
             # Save progressively after every case to avoid losing data on Ctrl+C
             with open(output_file, "w", encoding="utf-8") as f:
@@ -118,7 +170,7 @@ def run_evaluation(
         logger.info("=" * 60)
         logger.info("Graph database ready!")
         logger.info("=" * 60)
-        logger.info()
+        logger.info("")
 
     test_cases = load_test_cases(datasets, datasets_path)
     if limit is not None:
